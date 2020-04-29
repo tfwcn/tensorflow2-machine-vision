@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+
+<head>
+  <meta charset="utf-8">
+  <title>ECharts</title>
+</head>
+
+<body>
+  <input id="selectFile" type="file" />
+  <input id="btnSubmit" type="button" title="测试" value="测试"></input> 估计值：<span id="txtValue"></span>
+  <br />
+  <span>
+    原图：
+    <img id="main" style="max-height:400px; max-width: 400px; vertical-align: top;"></img>
+  </span>
+  <br />
+  <span>
+    缩放后的测试图：
+    <img id="random_img" style="max-height:400px; max-width: 400px; vertical-align: top;"></img>
+  </span>
+  <span>
+    算法检测后的图：
+    <img id="result_img" style="max-height:400px; max-width: 400px; vertical-align: top;"></img>
+  </span>
+  <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+  <script type="text/javascript">
+    function SubmitFun() {
+      document.getElementById('txtValue').innerText = '检测中。。。'
+      var preview = document.querySelector('#main');
+      var file = document.querySelector('#selectFile').files[0];
+      var reader = new FileReader();
+
+      reader.addEventListener("load", function () {
+        preview.src = reader.result;
+        let img = reader.result;
+        // console.log('图片数据：', img);
+        axios.post('/ai_api/object_detection/predict', {
+          img_data: img,
+          read: 1,
+        })
+          .then(function (response) {
+            console.log(response);
+            document.getElementById('random_img').src = 'data:image/jpg;base64,' + response.data.random_img;
+            document.getElementById('result_img').src = 'data:image/jpg;base64,' + response.data.result_img;
+            document.getElementById('txtValue').innerText = response.data.values;
+          })
+          .catch(function (error) {
+            console.log(error);
+          });
+      }, false);
+
+      if (file) {
+        reader.readAsDataURL(file);
+      }
+    }
+    document.getElementById('btnSubmit').addEventListener('click', SubmitFun);
+  </script>
+</body>
