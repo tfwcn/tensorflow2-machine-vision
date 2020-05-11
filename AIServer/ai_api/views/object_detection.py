@@ -49,7 +49,7 @@ def predict(request):
     # 图片大小
     image_size = np.int32([416, 416])
     # 缩放图片
-    img, _, padding = ImageHelper.opencvProportionalResize(img_old, image_size)
+    img, _, padding = ImageHelper.opencvProportionalResize(img_old, image_size, bg_color=(255, 255, 255))
 
     # print('imgType:', type(img))
     width, height = ImageHelper.opencvGetImageSize(img_old)

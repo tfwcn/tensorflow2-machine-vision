@@ -107,7 +107,7 @@ def opencvRotation(opencv_img, angle, bg_color=(255, 255, 255)):
     return result_img
 
 
-def opencvPerspective(opencv_img, angle=(0, 0, 0), offset=(0, 0, 0), scale=(1, 1, 1), bg_color=(255, 255, 255), points=None):
+def opencvPerspective(opencv_img, angle=(0, 0, 0), offset=(0, 0, 0), scale=(1, 1, 1), bg_color=None, points=None):
     '''Opencv透视变换图片，大小不变'''
     # 图片大小
     width, height = opencvGetImageSize(opencv_img)
@@ -192,15 +192,21 @@ def opencvPerspective(opencv_img, angle=(0, 0, 0), offset=(0, 0, 0), scale=(1, 1
     # print('dst', dst)
     # print('list_dst', list_dst)
     # print('M', M)
+    # 随机背景色
+    if bg_color is None:
+        bg_color = getRandomColor()
     result_img = opencvPerspectiveP(opencv_img, org, dst, bg_color)
     return result_img, org, dst, result_points
 
 
-def opencvPerspectiveP(opencv_img, org, dst, bg_color=(255, 255, 255)):
+def opencvPerspectiveP(opencv_img, org, dst, bg_color=None):
     '''Opencv透视变换图片，大小不变'''
     # 图片大小
     width, height = opencvGetImageSize(opencv_img)
     warpM = cv2.getPerspectiveTransform(org, dst)
+    # 随机背景色
+    if bg_color is None:
+        bg_color = getRandomColor()
     result_img = cv2.warpPerspective(
         opencv_img, warpM, (width, height), borderValue=bg_color)
     return result_img
@@ -262,6 +268,14 @@ def opencvRandomColor(opencv_img):
     result_img = cv2.cvtColor(result_img, cv2.COLOR_HSV2BGR)
     return result_img
 
+def getRandomColor():
+    '''获取随机颜色(r,g,b)'''
+    r = int(random.random() * 255)
+    g = int(random.random() * 255)
+    b = int(random.random() * 255)
+    result_color = (r, g, b)
+    return result_color
+
 
 def opencvReflective(opencv_img, bg_img, alpha):
     '''Opencv图片按透明的重叠，模拟反光'''
@@ -272,7 +286,7 @@ def opencvReflective(opencv_img, bg_img, alpha):
     return result_img
 
 
-def opencvProportionalResize(opencv_img, size, points=None, bg_color=(255, 255, 255)):
+def opencvProportionalResize(opencv_img, size, points=None, bg_color=None):
     '''等比例缩放'''
     # 图片大小
     width, height = opencvGetImageSize(opencv_img)
@@ -290,6 +304,9 @@ def opencvProportionalResize(opencv_img, size, points=None, bg_color=(255, 255, 
     bottom = new_height-resize_height-top
     left = (new_width-resize_width)//2
     right = new_width-resize_width-left
+    # 随机背景色
+    if bg_color is None:
+        bg_color = getRandomColor()
     result_img = cv2.copyMakeBorder(result_img, top, bottom, left, right, cv2.BORDER_CONSTANT, value=bg_color)
     padding = (top, bottom, left, right)
     # 转换点列表

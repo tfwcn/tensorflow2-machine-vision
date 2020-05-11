@@ -15,6 +15,7 @@ def GetRandomImage(image, points=None):
     random_offset_y = random.random()*90-45
     random_angle_x = random.random()*60-30
     random_angle_y = random.random()*60-30
+    random_angle_z = random.random()*40-20
     random_scale = random.random()*0.8+0.6
     # random_offset_x = 0
     # random_offset_y = 0
@@ -22,7 +23,7 @@ def GetRandomImage(image, points=None):
     # random_angle_y = 0
     # random_scale = 1
     random_img, org, dst, perspective_points = ImageHelpler.opencvPerspective(image, offset=(random_offset_x, random_offset_y, 0),
-                                                                              angle=(random_angle_x, random_angle_y, 0), scale=(random_scale, random_scale, 1), points=points)
+                                                                              angle=(random_angle_x, random_angle_y, , random_angle_z), scale=(random_scale, random_scale, 1), points=points)
     # 增加线条
     # random_img = image_helpler.opencvRandomLines(random_img, 8)
     # 增加噪声

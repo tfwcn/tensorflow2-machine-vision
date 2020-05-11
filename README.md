@@ -8,6 +8,7 @@
 - CIoU-loss (已实现)
 - Mish激活函数 (已实现)
 - Crossstage partial connections(CSP) (已实现)
+- DIoU-NMS (已实现)
 - CutMix (未实现)
 - Mosaic data augmentation (未实现)
 - DropBlock regularization (未实现)
@@ -22,7 +23,6 @@
 - Random training shapes (未实现)
 - Mish activation (未实现)
 - SAM-block (未实现)
-- DIoU-NMS (未实现)
 
 
 ### 素材标注

@@ -21,6 +21,7 @@ from ai_api.yolo_v4.model import Yolov4Model
 parser = argparse.ArgumentParser()
 parser.add_argument('--file_path', default='labels')
 parser.add_argument('--batch_size', default=8, type=int)
+parser.add_argument('--learning_rate', default=1e-4, type=float)
 args = parser.parse_args()
 
 # 下标转名称
@@ -187,7 +188,7 @@ def train():
     steps_per_epoch = 200
     epochs = 500
     model.FitGenerator(generator(file_list, batch_size),
-                        steps_per_epoch, epochs, auto_save=True)
+                        steps_per_epoch, epochs, auto_save=True, learning_rate=args.learning_rate)
 
 
 def main():

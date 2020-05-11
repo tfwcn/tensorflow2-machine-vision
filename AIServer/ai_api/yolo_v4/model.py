@@ -52,13 +52,10 @@ class Yolov4Model():
         # 建立特征提取模型
         self.BuildModel()
         # 优化器
-        # self.optimizer = tf.keras.optimizers.Adam(learning_rate=1e-4)
-        # self.optimizer = tf.keras.optimizers.RMSprop(learning_rate=1e-6)
         self.optimizer = RAdam(learning_rate=1e-4)
-        # self.optimizer = tf.keras.optimizers.SGD()
         # 保存模型
         self.checkpoint = tf.train.Checkpoint(
-            # optimizer=self.optimizer, 
+            optimizer=self.optimizer, 
             feature_model=self.feature_model)
         self.checkpoint_manager = tf.train.CheckpointManager(
             self.checkpoint, self.model_path, max_to_keep=3)
@@ -224,7 +221,50 @@ class Yolov4Model():
         y_pred_read_mins = y_pred_read_xy - y_pred_read_wh_half
         y_pred_read_maxes = y_pred_read_xy + y_pred_read_wh_half
         y_pred_boxes = tf.concat([y_pred_read_mins, y_pred_read_maxes], axis=-1)
+        # 去掉无效框
+        mask = tf.math.logical_and(y_pred_boxes[...,2] > y_pred_boxes[...,0], y_pred_boxes[...,3] > y_pred_boxes[...,1])
+        y_pred_boxes = tf.boolean_mask(y_pred_boxes, mask)
+        confidence = tf.boolean_mask(confidence, mask)
+        classes = tf.boolean_mask(classes, mask)
         return y_pred_boxes, confidence, classes
+
+    @tf.function
+    def GetDIOUNMS(self,
+                   boxes,
+                   scores,
+                   max_output_size,
+                   iou_threshold=0.5):
+        # 分数倒序下标
+        scores_sort_indexes = tf.argsort(scores, direction='DESCENDING')
+        # 排序后的框
+        boxes_sort = tf.gather(boxes, scores_sort_indexes)
+        # NMS后的下标
+        result_indexes = tf.TensorArray(tf.int32, 0, dynamic_size=True)
+        def boxes_foreach(idx, result_indexes, boxes_sort, scores_sort_indexes):
+            # 取最高分的box
+            if idx >= max_output_size:
+                return -1, result_indexes, boxes_sort, scores_sort_indexes
+            boxes_num = tf.shape(boxes_sort)[0]
+            if boxes_num == 0:
+                return -1, result_indexes, boxes_sort, scores_sort_indexes
+            boxes_top = boxes_sort[0:1, :]
+            indexes_top = scores_sort_indexes[0]
+            if boxes_num > 1:
+                # 计算IOU
+                boxes_other = boxes_sort[1:, :]
+                indexes_other = scores_sort_indexes[1:]
+                _, diou, _ = self.GetIOU(boxes_top, boxes_other)
+                iou_mask = diou < iou_threshold
+                boxes_sort = tf.boolean_mask(boxes_other, iou_mask)
+                scores_sort_indexes = tf.boolean_mask(indexes_other, iou_mask)
+                result_indexes = result_indexes.write(idx, indexes_top)
+                return idx + 1, result_indexes, boxes_sort, scores_sort_indexes
+            else:
+                result_indexes = result_indexes.write(idx, indexes_top)
+                return -1, result_indexes, boxes_sort, scores_sort_indexes
+        _, result_indexes, _, _ = tf.while_loop(lambda i, x1, x2, x3: tf.math.not_equal(i, -1), boxes_foreach, [0, result_indexes, boxes_sort, scores_sort_indexes])
+        result_indexes = result_indexes.stack()
+        return result_indexes
 
     @tf.function
     def GetNMSBoxes(self, y1, y2, y3, scores_thresh, iou_thresh):
@@ -306,7 +346,7 @@ class Yolov4Model():
         y_pred_confidence = tf.concat(
             [y1_pred_confidence, y2_pred_confidence, y3_pred_confidence], axis=0)
 
-        selected_indices = tf.image.non_max_suppression(
+        selected_indices = self.GetDIOUNMS(
             y_pred_boxes, y_pred_scores, 500, iou_threshold=iou_thresh)
         selected_boxes = tf.gather(y_pred_boxes, selected_indices)
         selected_classes_id = tf.gather(y_pred_classes_id, selected_indices)
@@ -317,9 +357,9 @@ class Yolov4Model():
         return selected_boxes, selected_classes_id, selected_scores, selected_classes, selected_confidence
 
     @tf.function
-    def GetCIOU(self, b1, b2):
+    def GetIOU(self, b1, b2):
         '''
-        计算CIOU
+        计算IOU,DIOU,CIOU
         b1:(1, b1_num, (x1, y1, x2, y2))
         b2:(..., b2_num, 1, (x1, y1, x2, y2))
         return:(..., b2_num, b1_num)
@@ -354,8 +394,9 @@ class Yolov4Model():
             * tf.math.square(tf.math.atan(b1_wh[..., 0] / b1_wh[..., 1])
             - tf.math.atan(b2_wh[..., 0] / b2_wh[..., 1]))
         alpha = v / (1 - iou + v + 0.000001)
-        ciou_term = d + alpha * v
-        return iou - ciou_term
+        diou = iou - d
+        ciou = diou - alpha * v
+        return iou, diou, ciou
 
     @tf.function
     def GetTarget(self, labels):
@@ -389,7 +430,7 @@ class Yolov4Model():
         # (boxes_num, 4) => (boxes_num, 1, 4)
         boxes = tf.expand_dims(boxes, axis=-2)
         # (boxes_num, 9)
-        iou = self.GetCIOU(boxes, anchors_boxes)
+        _, iou, _ = self.GetIOU(boxes, anchors_boxes)
         # (boxes_num, )
         anchors_idx = tf.cast(tf.argmax(iou, axis=-1), tf.int32)
         # tf.print('anchors_idx:', anchors_idx)
@@ -539,7 +580,7 @@ class Yolov4Model():
                 # (h, w, anchors_num, 4) => (h, w, anchors_num, 1, 4)
                 y_pred_boxes_tmp = tf.expand_dims(y_pred_boxes_tmp, axis=-2)
                 # (h, w, anchors_num, boxes_num)
-                iou = self.GetCIOU(y_true_boxes_tmp, y_pred_boxes_tmp)
+                _, _, iou = self.GetIOU(y_true_boxes_tmp, y_pred_boxes_tmp)
                 # (h, w, anchors_num)
                 best_iou = tf.math.reduce_max(iou, axis=-1)
                 # 把IOU<0.5的认为是背景
@@ -555,14 +596,16 @@ class Yolov4Model():
             # 计算loss
             boxes_loss_scale = 2 - y_true_read_wh[..., 0:1] * y_true_read_wh[..., 1:2]
             # tf.print('boxes_loss_scale:', tf.math.reduce_max(boxes_loss_scale), tf.math.reduce_min(boxes_loss_scale))
-            xy_loss = y_true_object * boxes_loss_scale * tf.math.square(y_true_raw_xy - tf.math.sigmoid(y_pred_raw_xy))
+            xy_loss_bc = tf.keras.losses.binary_crossentropy(tf.expand_dims(y_true_raw_xy, axis=-1),
+                              tf.expand_dims(y_pred_raw_xy, axis=-1), from_logits=True)
+            xy_loss = y_true_object * boxes_loss_scale * xy_loss_bc
             wh_loss = y_true_object * boxes_loss_scale * 0.5 * tf.math.square(y_true_raw_wh - y_pred_raw_wh)
             object_loss_bc = tf.keras.losses.binary_crossentropy(tf.expand_dims(y_true_object, axis=-1),
-                             tf.expand_dims(tf.math.sigmoid(y_pred_object), axis=-1))
+                             tf.expand_dims(y_pred_object, axis=-1), from_logits=True)
             # tf.print('object_loss_bc:', tf.math.reduce_max(object_loss_bc), tf.math.reduce_min(object_loss_bc))
             object_loss = y_true_object * object_loss_bc + (1 - y_true_object) * object_loss_bc * ignore_mask
             classes_loss_bc = tf.keras.losses.binary_crossentropy(tf.expand_dims(y_true_classes, axis=-1),
-                              tf.expand_dims(tf.math.sigmoid(y_pred_classes), axis=-1))
+                              tf.expand_dims(y_pred_classes, axis=-1), from_logits=True)
             # tf.print('classes_loss_bc:', tf.math.reduce_max(classes_loss_bc), tf.math.reduce_min(classes_loss_bc))
             classes_loss = y_true_object * classes_loss_bc
 
@@ -575,7 +618,11 @@ class Yolov4Model():
         # tf.print('loss:', loss)
         return loss
 
-    @tf.function(input_signature=[tf.TensorSpec(shape=(None, None, None, 3), dtype=tf.float32), tf.TensorSpec(shape=(None, 6), dtype=tf.float32), tf.TensorSpec(shape=(), dtype=tf.float32)])
+    @tf.function(input_signature=[
+        tf.TensorSpec(shape=(None, None, None, 3), dtype=tf.float32),
+        tf.TensorSpec(shape=(None, 6), dtype=tf.float32),
+        tf.TensorSpec(shape=(), dtype=tf.float32)
+    ])
     def TrainStep(self, input_image, target, learning_rate):
         '''
         单步训练
@@ -594,14 +641,14 @@ class Yolov4Model():
             # 计算损失
             tmp_loss = self.GetLoss(
                 y_true=target, y_pred=output)
-            gradients_loss = tmp_loss * learning_rate
         trainable_variables = self.feature_model.trainable_variables
-        gradients = tape.gradient(gradients_loss, trainable_variables)
+        gradients = tape.gradient(tmp_loss, trainable_variables)
+        self.optimizer.learning_rate = learning_rate
         self.optimizer.apply_gradients(zip(gradients, trainable_variables))
 
         return tmp_loss
 
-    def FitGenerator(self, generator, steps_per_epoch, epochs, initial_epoch=1, auto_save=False, learning_rate=1):
+    def FitGenerator(self, generator, steps_per_epoch, epochs, initial_epoch=1, auto_save=False, learning_rate=1e-4):
         '''批量训练'''
         min_loss = None
         min_loss_num = 0
@@ -614,24 +661,27 @@ class Yolov4Model():
                 # print('generator', x.shape, y.shape)
                 tmp_g_loss = self.TrainStep(x, y, lr)
                 epoch_loss += tmp_g_loss
-                print('\rsteps:%d/%d, epochs:%d/%d, loss:%0.4f'
-                      % (steps, steps_per_epoch, epoch, epochs, tmp_g_loss), end='', flush=True)
+                print('\rsteps:%d/%d, epochs:%d/%d, loss:%0.4f, epoch_loss_avg:%0.4f'
+                      % (steps, steps_per_epoch, epoch, epochs, tmp_g_loss, epoch_loss / steps), end='', flush=True)
                 if tf.math.is_nan(tmp_g_loss):
                     return
             # 求平均
             # epoch_loss = epoch_loss / steps_per_epoch
             end = time.process_time()
-            print('\rsteps:%d/%d, epochs:%d/%d, %0.4f S, loss:%0.4f, epoch_loss:%0.4f'
-                  % (steps, steps_per_epoch, epoch, epochs, (end - start), tmp_g_loss, epoch_loss), flush=True)
+            print('\rsteps:%d/%d, epochs:%d/%d, %0.4f S, loss:%0.4f, epoch_loss:%0.4f, epoch_loss_avg:%0.4f, lr:%e'
+                  % (steps, steps_per_epoch, epoch, epochs, (end - start), tmp_g_loss, epoch_loss, epoch_loss / steps_per_epoch, lr), flush=True)
             if min_loss is None or min_loss > epoch_loss:
                 min_loss = epoch_loss
                 min_loss_num = 0
             else:
                 min_loss_num += 1
-            if min_loss_num > 5:
+            if min_loss_num > 10:
                 lr *= 0.6
                 min_loss_num = 0
+                min_loss = None
                 print('lr:', lr)
+                if lr < 1e-7:
+                    return
             if auto_save:
                 self.SaveModel()
 
