@@ -185,7 +185,7 @@ def train():
     print('图片数：', len(file_list))
     # 训练参数
     batch_size = args.batch_size
-    steps_per_epoch = 200
+    steps_per_epoch = 1000
     epochs = 500
     model.FitGenerator(generator(file_list, batch_size),
                         steps_per_epoch, epochs, auto_save=True, learning_rate=args.learning_rate)

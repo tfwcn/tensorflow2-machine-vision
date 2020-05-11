@@ -596,9 +596,7 @@ class Yolov4Model():
             # 计算loss
             boxes_loss_scale = 2 - y_true_read_wh[..., 0:1] * y_true_read_wh[..., 1:2]
             # tf.print('boxes_loss_scale:', tf.math.reduce_max(boxes_loss_scale), tf.math.reduce_min(boxes_loss_scale))
-            xy_loss_bc = tf.keras.losses.binary_crossentropy(tf.expand_dims(y_true_raw_xy, axis=-1),
-                              tf.expand_dims(y_pred_raw_xy, axis=-1), from_logits=True)
-            xy_loss = y_true_object * boxes_loss_scale * xy_loss_bc
+            xy_loss = y_true_object * boxes_loss_scale * tf.math.square(y_true_raw_xy - y_pred_raw_xy)
             wh_loss = y_true_object * boxes_loss_scale * 0.5 * tf.math.square(y_true_raw_wh - y_pred_raw_wh)
             object_loss_bc = tf.keras.losses.binary_crossentropy(tf.expand_dims(y_true_object, axis=-1),
                              tf.expand_dims(y_pred_object, axis=-1), from_logits=True)
