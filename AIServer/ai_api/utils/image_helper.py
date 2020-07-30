@@ -86,29 +86,32 @@ def opencvGetImageSize(opencv_img):
     return width, height
 
 
-def opencvScale(opencv_img, x_scale, y_scale, bg_color=(255, 255, 255)):
+def opencvScale(opencv_img, x_scale, y_scale, bg_color=(128, 128, 128), bg_mode = cv2.BORDER_CONSTANT):
     '''Opencv缩放图片，大小不变'''
     result_img = opencvPerspective(
-        opencv_img, scale=(x_scale, y_scale, 0), bg_color=bg_color)
+        opencv_img, scale=(x_scale, y_scale, 0), bg_color=bg_color, bg_mode=bg_mode)
     return result_img
 
 
-def opencvOffset(opencv_img, x_offset, y_offset, bg_color=(255, 255, 255)):
+def opencvOffset(opencv_img, x_offset, y_offset, bg_color=(128, 128, 128), bg_mode = cv2.BORDER_CONSTANT):
     '''Opencv平移图片，大小不变'''
     result_img = opencvPerspective(
-        opencv_img, offset=(x_offset, y_offset, 0), bg_color=bg_color)
+        opencv_img, offset=(x_offset, y_offset, 0), bg_color=bg_color, bg_mode=bg_mode)
     return result_img
 
 
-def opencvRotation(opencv_img, angle, bg_color=(255, 255, 255)):
+def opencvRotation(opencv_img, angle, bg_color=(128, 128, 128), bg_mode = cv2.BORDER_CONSTANT):
     '''Opencv旋转图片，大小不变'''
     result_img = opencvPerspective(
-        opencv_img, angle=(0, 0, angle), bg_color=bg_color)
+        opencv_img, angle=(0, 0, angle), bg_color=bg_color, bg_mode=bg_mode)
     return result_img
 
 
-def opencvPerspective(opencv_img, angle=(0, 0, 0), offset=(0, 0, 0), scale=(1, 1, 1), bg_color=None, points=None):
-    '''Opencv透视变换图片，大小不变'''
+def opencvPerspective(opencv_img, angle=(0, 0, 0), offset=(0, 0, 0), scale=(1, 1, 1), bg_color=(128, 128, 128), bg_mode = cv2.BORDER_CONSTANT, points=None):
+    '''
+    Opencv透视变换图片，大小不变
+    bg_color：默认随机背景色，不想随机需指定颜色值
+    '''
     # 图片大小
     width, height = opencvGetImageSize(opencv_img)
     # 角度转弧度
@@ -192,23 +195,28 @@ def opencvPerspective(opencv_img, angle=(0, 0, 0), offset=(0, 0, 0), scale=(1, 1
     # print('dst', dst)
     # print('list_dst', list_dst)
     # print('M', M)
-    # 随机背景色
-    if bg_color is None:
-        bg_color = getRandomColor()
-    result_img = opencvPerspectiveP(opencv_img, org, dst, bg_color)
+    result_img = opencvPerspectiveP(opencv_img, org, dst, bg_color, bg_mode)
     return result_img, org, dst, result_points
 
 
-def opencvPerspectiveP(opencv_img, org, dst, bg_color=None):
-    '''Opencv透视变换图片，大小不变'''
+def opencvPerspectiveP(opencv_img, org, dst, bg_color=(128, 128, 128), bg_mode = cv2.BORDER_CONSTANT):
+    '''
+    Opencv透视变换图片，大小不变
+    '''
     # 图片大小
     width, height = opencvGetImageSize(opencv_img)
     warpM = cv2.getPerspectiveTransform(org, dst)
     # 随机背景色
     if bg_color is None:
         bg_color = getRandomColor()
+    if bg_mode is None:
+        random_value = random.random()
+        if random_value < 0.5:
+            bg_mode = cv2.BORDER_CONSTANT
+        else:
+            bg_mode = cv2.BORDER_REPLICATE
     result_img = cv2.warpPerspective(
-        opencv_img, warpM, (width, height), borderValue=bg_color)
+        opencv_img, warpM, (width, height), borderValue=bg_color, borderMode=bg_mode)
     return result_img
 
 
@@ -217,7 +225,8 @@ def getRandomColor():
     c1 = random.randint(0, 255)
     c2 = random.randint(0, 255)
     c3 = random.randint(0, 255)
-    return (c1, c2, c3)
+    result_color = (c1, c2, c3)
+    return result_color
 
 
 def opencvRandomLines(opencv_img, line_count):
@@ -237,44 +246,39 @@ def opencvNoise(opencv_img):
     '''Opencv图片添加噪点'''
     # 图片大小
     width, height = opencvGetImageSize(opencv_img)
-    noise = np.random.random((height, width, 3)) * 30
+    noise = np.random.random((height, width, 3)) * 40
     noise = noise.astype(np.int32)
     tmp_img = opencv_img.astype(np.int32)
-    tmp_img = tmp_img + noise - 15
+    tmp_img = tmp_img + noise - 20
     tmp_img = np.minimum(tmp_img, 255)
     tmp_img = np.maximum(tmp_img, 0)
     result_img = tmp_img.astype(np.uint8)
     return result_img
 
 
-def opencvRandomColor(opencv_img):
+def opencvRandomColor(opencv_img, random_h=True, random_s=True, random_v=True):
     '''Opencv图片随机颜色'''
     tmp_img = cv2.cvtColor(opencv_img, cv2.COLOR_BGR2HSV)
     tmp_img = tmp_img.astype(np.int32)
     # H,色相
-    tmp_img[:,:,0] = tmp_img[:,:,0] + int(random.random() * 255) - 127
+    if random_h:
+        tmp_img[:,:,0] = tmp_img[:,:,0] + random.randint(0, 255) - 127
     # S,饱和度
-    tmp_img[:,:,1] = tmp_img[:,:,1] + int(random.random() * 60) - 30
+    if random_s:
+        tmp_img[:,:,1] = tmp_img[:,:,1] + random.randint(0, 60) - 30
     # V,亮度
-    if np.mean(tmp_img[:,:,2]) < 150:
-        # print('V:', np.mean(tmp_img[:,:,2]))
-        tmp_img[:,:,2] = tmp_img[:,:,2] + int(random.random() * 80) - 40
-    else:
-        # print('V:', np.mean(tmp_img[:,:,2]))
-        tmp_img[:,:,2] = tmp_img[:,:,2] + int(random.random() * 110) - 80
+    if random_v:
+        if np.mean(tmp_img[:,:,2]) < 150:
+            # print('V:', np.mean(tmp_img[:,:,2]))
+            tmp_img[:,:,2] = tmp_img[:,:,2] + random.randint(0, 80) - 40
+        else:
+            # print('V:', np.mean(tmp_img[:,:,2]))
+            tmp_img[:,:,2] = tmp_img[:,:,2] + random.randint(0, 110) - 80
     tmp_img = np.minimum(tmp_img, 255)
     tmp_img = np.maximum(tmp_img, 0)
     result_img = tmp_img.astype(np.uint8)
     result_img = cv2.cvtColor(result_img, cv2.COLOR_HSV2BGR)
     return result_img
-
-def getRandomColor():
-    '''获取随机颜色(r,g,b)'''
-    r = int(random.random() * 255)
-    g = int(random.random() * 255)
-    b = int(random.random() * 255)
-    result_color = (r, g, b)
-    return result_color
 
 
 def opencvReflective(opencv_img, bg_img, alpha):
@@ -286,7 +290,7 @@ def opencvReflective(opencv_img, bg_img, alpha):
     return result_img
 
 
-def opencvProportionalResize(opencv_img, size, points=None, bg_color=None):
+def opencvProportionalResize(opencv_img, size, points=None, bg_color=(128, 128, 128), bg_mode = cv2.BORDER_CONSTANT):
     '''等比例缩放'''
     # 图片大小
     width, height = opencvGetImageSize(opencv_img)
@@ -307,7 +311,13 @@ def opencvProportionalResize(opencv_img, size, points=None, bg_color=None):
     # 随机背景色
     if bg_color is None:
         bg_color = getRandomColor()
-    result_img = cv2.copyMakeBorder(result_img, top, bottom, left, right, cv2.BORDER_CONSTANT, value=bg_color)
+    if bg_mode is None:
+        random_value = random.random()
+        if random_value < 0.5:
+            bg_mode = cv2.BORDER_CONSTANT
+        else:
+            bg_mode = cv2.BORDER_REPLICATE
+    result_img = cv2.copyMakeBorder(result_img, top, bottom, left, right, borderType=bg_mode, value=bg_color)
     padding = (top, bottom, left, right)
     # 转换点列表
     result_points = []
@@ -335,17 +345,31 @@ def opencvCut(opencv_img, box):
     result_img = opencv_img[box[1]:box[3], box[0]:box[2]]
     return result_img
 
+
+def opencvBlur(opencv_img, ksize=(0, 0)):
+    '''Opencv图片模糊'''
+    result_img = cv2.blur(opencv_img, ksize)
+    return result_img
+
 def main():
     # 读取图片
-    img = fileToOpencvImage('./data/a.jpg')
-    result_img, _, _ = opencvProportionalResize(img, (400, 400))
+    img = fileToOpencvImage('./data/e.jpg')
+    result_img, _, _ = opencvProportionalResize(img, (400, 400), bg_color=None, bg_mode=None)
     print('result_img', type(result_img))
+    showOpencvImage(result_img)
+    # 增加模糊
+    ksize = random.randint(0, 5)
+    if ksize>0:
+        result_img= opencvBlur(result_img, (ksize, ksize))
+    print('result_img', type(result_img), ksize)
+    showOpencvImage(result_img)
     # result_img = opencvRandomColor(result_img)
     random_offset_x = random.random()*90-45
     random_offset_y = random.random()*90-45
     random_angle_x = random.random()*60-30
     random_angle_y = random.random()*60-30
-    random_scale = random.random()*1.0+0.8
+    random_angle_z = random.random()*40-20
+    random_scale = random.random()*0.8+0.5
     # random_offset_x = 0
     # random_offset_y = 0
     # random_angle_x = 0
@@ -357,15 +381,17 @@ def main():
                         [350, 50], # 右上
                         [350, 350]]) # 右下
     result_img, org, dst, perspective_points = opencvPerspective(result_img, offset=(random_offset_x, random_offset_y, 0),
-                                                    angle=(random_angle_x, random_angle_y, 0), scale=(random_scale, random_scale, 1), points=points)
+                                                    angle=(random_angle_x, random_angle_y, random_angle_z), scale=(random_scale, random_scale, 1),
+                                                    points=points, bg_color=None, bg_mode=None)
     width, height = opencvGetImageSize(result_img)
     print('size:', width, height)
+    result_img = opencvNoise(result_img)
     showOpencvImage(result_img)
-    # 读取反光图片
-    bg_img = fileToOpencvImage('./data/b.jpg')
-    # 随机反光
-    result_img = opencvReflective(result_img, bg_img, 0.85)
-    showOpencvImage(result_img)
+    # # 读取反光图片
+    # bg_img = fileToOpencvImage('./data/c.jpg')
+    # # 随机反光
+    # result_img = opencvReflective(result_img, bg_img, 0.85)
+    # showOpencvImage(result_img)
 
 
 if __name__ == '__main__':

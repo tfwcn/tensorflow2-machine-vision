@@ -43,11 +43,11 @@ class Yolov4Model():
         if not os.path.exists(self.model_path):
             os.makedirs(self.model_path)
         # 建立模型
-        self.BuildModel()
+        self.BuildInfoModel()
         # 加载模型
         self.LoadModel()
 
-    def BuildModel(self):
+    def BuildInfoModel(self):
         '''建立模型'''
         # 建立特征提取模型
         self.BuildModel()

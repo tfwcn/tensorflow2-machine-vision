@@ -8,13 +8,22 @@ import random
 import numpy as np
 import math
 import time
-from ai_api.yolo_v4.model import Yolov4Model
-import ai_api.utils.image_helpler as ImageHelper
+# from ai_api.yolo_v4.model import Yolov4Model
+from ai_api.yolo_v4.model2 import ObjectDetectionModel as Yolov4Model
+import ai_api.utils.image_helper as ImageHelper
 
 # 下标转名称
 classes_name = {
-    0: 'Dog',
-    1: 'Cat',
+    0: '0',
+    1: '1',
+    2: '2',
+    3: '3',
+    4: '4',
+    5: '5',
+    6: '6',
+    7: '7',
+    8: '8',
+    9: '9',
     }
 # 名称转下标
 classes_index={}

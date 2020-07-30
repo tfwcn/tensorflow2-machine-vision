@@ -9,7 +9,7 @@ import argparse
 import random
 
 sys.path.append(os.getcwd())
-import ai_api.utils.image_helpler as ImageHelpler
+import ai_api.utils.image_helper as ImageHelper
 import ai_api.utils.file_helper as FileHelper
 import ai_api.yolo_v4.data_helper as DataHelper
 from ai_api.yolo_v4.model import Yolov4Model
@@ -26,8 +26,16 @@ args = parser.parse_args()
 
 # 下标转名称
 classes_name = {
-    0: 'Dog',
-    1: 'Cat',
+    0: '0',
+    1: '1',
+    2: '2',
+    3: '3',
+    4: '4',
+    5: '5',
+    6: '6',
+    7: '7',
+    8: '8',
+    9: '9',
     }
 # 名称转下标
 classes_index={}
@@ -120,12 +128,12 @@ def generator(file_list, batch_size):
             # 转换boxes成点列表
             boxes = boxes.reshape((-1,2))
             # 读取图片
-            img = ImageHelpler.fileToOpencvImage(image_path)
+            img = ImageHelper.fileToOpencvImage(image_path)
             if np.max(img)>255 or np.min(img)<0:
                 print("图片异常", image_path)
                 continue
             # 缩放图片
-            img, boxes, _ = ImageHelpler.opencvProportionalResize(
+            img, boxes, _ = ImageHelper.opencvProportionalResize(
                 img, image_size, points=boxes)
             # 随机变换图片
             random_img, boxes = DataHelper.GetRandomImage(img, points=boxes)
@@ -139,9 +147,9 @@ def generator(file_list, batch_size):
             bg_image_path = os.path.join(
                 bg_json_dir, bg_json_data['imagePath'].replace('\\', '/'))
             # 读取反光图片
-            bg_img = ImageHelpler.fileToOpencvImage(bg_image_path)
+            bg_img = ImageHelper.fileToOpencvImage(bg_image_path)
             # 随机反光
-            random_img = ImageHelpler.opencvReflective(random_img, bg_img, 0.85 + (0.15* random.random()))
+            random_img = ImageHelper.opencvReflective(random_img, bg_img, 0.85 + (0.15* random.random()))
             # 最后输出图片
             random_img = cv2.cvtColor(random_img, cv2.COLOR_BGR2RGB)
             # 调整参数范围
