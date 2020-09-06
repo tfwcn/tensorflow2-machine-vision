@@ -6,7 +6,7 @@ import os
 import pylab
 import argparse
 pylab.rcParams['figure.figsize'] = (8.0, 10.0)
-matplotlib.use('TkAgg')
+# matplotlib.use('TkAgg')
 
 # 启动参数
 parser = argparse.ArgumentParser()
