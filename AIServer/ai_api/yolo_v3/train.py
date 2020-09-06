@@ -8,6 +8,22 @@ from ai_api.yolo_v3.model import YoloV3Model
 from ai_api.yolo_v3.dataset_coco import GetDataSet
 from ai_api.utils.radam import RAdam
 
+import argparse
+
+# 启动参数
+parser = argparse.ArgumentParser()
+parser.add_argument('--trainData', default='./train2017')
+parser.add_argument('--trainLabels', default='./data/coco_train2017_labels.txt')
+parser.add_argument('--valData', default='./val2017')
+parser.add_argument('--valLabels', default='./data/coco_val2017_labels.txt')
+parser.add_argument('--classesFile', default='./data/coco_classes.txt')
+args = parser.parse_args()
+
+trainData = args.trainData
+trainLabels = args.trainLabels
+valData = args.valData
+valLabels = args.valLabels
+classesFile = args.classesFile
 
 
 class SaveCallback(tf.keras.callbacks.Callback):
@@ -27,12 +43,12 @@ def train():
     batch_size = 4 # note that more GPU memory is required after unfreezing the body
     anchors = [10,13,  16,30,  33,23,  30,61,  62,45,  59,119,  116,90,  156,198,  373,326]
     anchors = np.array(anchors).reshape(-1, 2)
-    data_set_train, data_generator_train = GetDataSet(image_path='E:\\MyFiles\\labels\\coco2017\\train2017',
-        label_path='E:\\MyFiles\\git\\tensorflow2-yolov4\\AIServer\\data\\coco_train2017_labels.txt',
-        classes_path='E:\\MyFiles\\git\\tensorflow2-yolov4\\AIServer\\data\\coco_classes.txt', batch_size=batch_size, anchors=anchors)
-    data_set_val, data_generator_val = GetDataSet(image_path='E:\\MyFiles\\labels\\coco2017\\val2017',
-        label_path='E:\\MyFiles\\git\\tensorflow2-yolov4\\AIServer\\data\\coco_val2017_labels.txt',
-        classes_path='E:\\MyFiles\\git\\tensorflow2-yolov4\\AIServer\\data\\coco_classes.txt', batch_size=1, anchors=anchors, is_mean=False)
+    data_set_train, data_generator_train = GetDataSet(image_path=trainData,
+        label_path=trainLabels,
+        classes_path=classesFile, batch_size=batch_size, anchors=anchors)
+    data_set_val, data_generator_val = GetDataSet(image_path=valData,
+        label_path=valLabels,
+        classes_path=classesFile, batch_size=1, anchors=anchors, is_mean=False)
 
     # 构建模型
     model = YoloV3Model(anchors_num=len(anchors)//3, classes_num=data_generator_train.classes_num, anchors=anchors, image_size=(416, 416))
