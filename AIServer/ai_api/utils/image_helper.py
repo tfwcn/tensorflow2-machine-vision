@@ -330,6 +330,35 @@ def opencvProportionalResize(opencv_img, size, points=None, bg_color=(128, 128, 
     return result_img, result_points, padding
 
 
+def opencvProportionalResizePoint(img_size, new_size, points=None):
+    '''等比例缩放坐标变换'''
+    # 图片大小
+    width, height = img_size
+    new_width, new_height = new_size[0], new_size[1]
+    #长边缩放为min_side
+    if width / height > new_width / new_height:
+        resize_width = new_width
+        resize_height = int((height / width) * resize_width)
+    else:
+        resize_height = new_height
+        resize_width = int((width / height) * resize_height)
+    # 填充边界
+    top = (new_height-resize_height)//2
+    bottom = new_height-resize_height-top
+    left = (new_width-resize_width)//2
+    right = new_width-resize_width-left
+    padding = (top, bottom, left, right)
+    # 转换点列表
+    result_points = []
+    if points is not None:
+        for p in points:
+            tmp_x = p[0]*resize_width/width+left
+            tmp_y = p[1]*resize_height/height+top
+            result_points.append([tmp_x, tmp_y])
+    result_points = np.float32(result_points)
+    return result_points, padding
+
+
 def opencvCut(opencv_img, box):
     '''
     图片裁剪(如框超出图片边缘会裁剪)
@@ -351,9 +380,25 @@ def opencvBlur(opencv_img, ksize=(0, 0)):
     result_img = cv2.blur(opencv_img, ksize)
     return result_img
 
+def opencvDrowBoxes(opencv_img, boxes, classes_id=None, classes_name=None, scores=None):
+    '''Opencv画目标框'''
+    print('opencvDrowBoxes boxes:', type(boxes), '\n', boxes)
+    print('opencvDrowBoxes classes_id:', type(classes_id), '\n', classes_id)
+    print('opencvDrowBoxes classes_name:', type(classes_name), '\n', classes_name)
+    print('opencvDrowBoxes scores:', type(scores), '\n', scores)
+    result_img = opencv_img.copy()
+    boxes = np.array(boxes)
+    for i in range(boxes.shape[0]):
+        cv2.rectangle(result_img, tuple(boxes[i,0:2]), tuple(boxes[i,2:4]), (0,0,255), thickness=1)
+        if classes_name is not None and classes_id is not None:
+            cv2.putText(result_img, classes_name[classes_id[i]], tuple(boxes[i,0:2]), cv2.FONT_HERSHEY_COMPLEX, 0.6, (0, 100, 0), 1)
+        if scores is not None:
+            cv2.putText(result_img, str(scores[i]), tuple(boxes[i,0:2]+(0, 20)), cv2.FONT_HERSHEY_COMPLEX, 0.6, (0, 0, 100), 1)
+    return result_img
+
 def main():
     # 读取图片
-    img = fileToOpencvImage('./data/e.jpg')
+    img = fileToOpencvImage('./data/a.jpg')
     result_img, _, _ = opencvProportionalResize(img, (400, 400), bg_color=None, bg_mode=None)
     print('result_img', type(result_img))
     showOpencvImage(result_img)
@@ -370,11 +415,12 @@ def main():
     random_angle_y = random.random()*60-30
     random_angle_z = random.random()*40-20
     random_scale = random.random()*0.8+0.5
-    # random_offset_x = 0
-    # random_offset_y = 0
-    # random_angle_x = 0
-    # random_angle_y = 0
-    # random_scale = 1
+    random_offset_x = 0
+    random_offset_y = 200
+    random_angle_x = 0
+    random_angle_y = 30
+    random_angle_z = 0
+    random_scale = 0.5
     # 点列表
     points = np.float32([[50, 50], # 左上
                         [50, 350], # 左下

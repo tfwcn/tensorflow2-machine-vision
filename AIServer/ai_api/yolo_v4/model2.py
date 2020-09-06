@@ -10,11 +10,66 @@ import math
 sys.path.append(os.getcwd())
 from ai_api.utils.radam import RAdam
 from ai_api.utils.mish import Mish
+from ai_api.utils.smooth_l1_loss import SmoothL1Loss
 
-class ConvLayer(tf.keras.layers.Layer):
+
+@tf.function
+def GetIOU(b1, b2):
+    '''
+    计算IOU,DIOU,CIOU
+    b1:(1, b1_num, (x1, y1, x2, y2))
+    b2:(..., b2_num, 1, (x1, y1, x2, y2))
+    return:(..., b2_num, b1_num)
+    b1与b2前面维度一样或缺少也可以，返回维度与最多的一样
+    '''
+    # (..., b2_num, b1_num, 2)
+    intersect_mins = tf.math.maximum(b1[..., 0:2], b2[..., 0:2])
+    intersect_maxes = tf.math.minimum(b1[..., 2:4], b2[..., 2:4])
+    intersect_wh = tf.math.maximum(intersect_maxes - intersect_mins, 0.)
+    # (..., b2_num, b1_num)
+    intersect_area = intersect_wh[..., 0] * intersect_wh[..., 1]
+    # (1, b1_num, 2)
+    b1_wh = b1[..., 2:4] - b1[..., 0:2]
+    # (..., b2_num, 1, 2)
+    b2_wh = b2[..., 2:4] - b2[..., 0:2]
+    # (1, b1_num)
+    b1_area = b1_wh[..., 0] * b1_wh[..., 1]
+    # (..., b2_num, 1)
+    b2_area = b2_wh[..., 0] * b2_wh[..., 1]
+    # (h, w, anchors_num, boxes_num)
+    iou = intersect_area / (b1_area + b2_area - intersect_area)
+    # tf.print('iou:', tf.math.reduce_max(iou), tf.math.reduce_min(iou))
+    # 最小外界矩形
+    ub_mins = tf.math.minimum(b1[..., 0:2], b2[..., 0:2])
+    ub_maxes = tf.math.maximum(b1[..., 2:4], b2[..., 2:4])
+    ub_wh = ub_maxes - ub_mins
+    c = tf.math.square(ub_wh[..., 0]) + tf.math.square(ub_wh[..., 1])
+    # 计算中心距离
+    b1_xy = (b1[..., 2:4] + b1[..., 0:2]) / 2
+    b2_xy = (b2[..., 2:4] + b2[..., 0:2]) / 2
+    u = tf.math.reduce_sum(tf.math.square(b1_xy - b2_xy), axis=-1)
+    # 中心距离越近，d值越小
+    d = u / c
+    # tf.print('d:', tf.math.reduce_max(d), tf.math.reduce_min(d))
+    # 两个框宽高比越接近，v值越小
+    v = 4 / tf.math.square(math.pi) * tf.math.square(tf.math.atan(b1_wh[..., 0] / b1_wh[..., 1]) - tf.math.atan(b2_wh[..., 0] / b2_wh[..., 1]))
+    # tf.print('v:', tf.math.reduce_max(v), tf.math.reduce_min(v))
+    alpha = v / (1 - iou + v)
+    # tf.print('alpha:', tf.math.reduce_max(alpha), tf.math.reduce_min(alpha))
+    # 目标不相交时，为负值。目标重叠时为0。
+    diou = iou - d
+    ciou = diou - alpha * v
+    # tf.print('iou:', tf.math.reduce_max(iou), tf.math.reduce_min(iou))
+    # tf.print('diou:', tf.math.reduce_max(diou), tf.math.reduce_min(diou))
+    # tf.print('ciou:', tf.math.reduce_max(ciou), tf.math.reduce_min(ciou))
+    return iou, diou, ciou
+
+
+class ConvLayer(tf.keras.Model):
     '''自定义层'''
 
     def __init__(self, filters, kernel_size, strides=(1, 1), padding='same', use_bias=False, **args):
+        '''初始化网络'''
         super(ConvLayer, self).__init__(**args)
         self.filters = filters
         self.kernel_size = kernel_size
@@ -22,80 +77,84 @@ class ConvLayer(tf.keras.layers.Layer):
         self.padding = padding
         self.use_bias = use_bias
 
-    def build(self, input_shape):
-        '''初始化网络'''
         self.conv1 = tf.keras.layers.Conv2D(self.filters, self.kernel_size, padding=self.padding,
                                              strides=self.strides,
                                              kernel_regularizer=tf.keras.regularizers.l2(5e-4),
                                              use_bias=self.use_bias)
 
-    def call(self, x, training):
+    @tf.function
+    def call(self, x, training=False):
         '''运算部分'''
         x = self.conv1(x)
         return x
 
-class ConvBnMishLayer(tf.keras.layers.Layer):
+class ConvBnMishLayer(tf.keras.Model):
     '''自定义层'''
 
     def __init__(self, filters, kernel_size, strides=(1, 1), padding='same', **args):
+        '''初始化网络'''
         super(ConvBnMishLayer, self).__init__(**args)
         self.filters = filters
         self.kernel_size = kernel_size
         self.strides = strides
         self.padding = padding
 
-    def build(self, input_shape):
-        '''初始化网络'''
         self.conv1 = ConvLayer(self.filters, self.kernel_size,
                                strides=self.strides, padding=self.padding)
         self.bn1 = tf.keras.layers.BatchNormalization()
         self.mish1 = Mish()
-        self.sin1 = tf.keras.layers.Lambda(lambda x: tf.math.sin(x))
-        self.concat1 = tf.keras.layers.Concatenate()
+        # self.sin1 = tf.keras.layers.Lambda(lambda x: tf.math.sin(x))
+        # self.concat1 = tf.keras.layers.Concatenate()
 
-    def call(self, x, training):
+    @tf.function
+    def call(self, x, training=False):
         '''运算部分'''
-        x = self.conv1(x)
-        x = self.bn1(x)
-        x1 = self.mish1(x[..., :self.filters])
-        x2 = self.sin1(x[..., self.filters:])
-        x = self.concat1([x1, x2])
+        x = self.conv1(x, training=training)
+        x = self.bn1(x, training=training)
+        x = self.mish1(x)
+        # x1 = self.mish1(x[..., :self.filters//2])
+        # x2 = self.sin1(x[..., self.filters//2:])
+        # x = self.concat1([x1, x2])
         return x
 
-class ConvBnLReluLayer(tf.keras.layers.Layer):
+class ConvBnLReluLayer(tf.keras.Model):
     '''自定义层'''
 
     def __init__(self, filters, kernel_size, strides=(1, 1), padding='same', **args):
+        '''初始化网络'''
         super(ConvBnLReluLayer, self).__init__(**args)
         self.filters = filters
         self.kernel_size = kernel_size
         self.strides = strides
         self.padding = padding
 
-    def build(self, input_shape):
-        '''初始化网络'''
         self.conv1 = ConvLayer(self.filters, self.kernel_size,
                                strides=self.strides, padding=self.padding)
         self.bn1 = tf.keras.layers.BatchNormalization()
         self.lrelu1 = tf.keras.layers.LeakyReLU(alpha=0.1)
+        # self.sin1 = tf.keras.layers.Lambda(lambda x: tf.math.sin(x))
+        # self.concat1 = tf.keras.layers.Concatenate()
 
-    def call(self, x, training):
+    @tf.function
+    def call(self, x, training=False):
         '''运算部分'''
         x = self.conv1(x)
-        x = self.bn1(x)
+        x = self.bn1(x, training=training)
         x = self.lrelu1(x)
+        # x1 = self.lrelu1(x[..., :self.filters//2])
+        # x2 = self.sin1(x[..., self.filters//2:])
+        # x = self.concat1([x1, x2])
         return x
 
-class BlocksLayer(tf.keras.layers.Layer):
+class BlocksLayer(tf.keras.Model):
     '''自定义层'''
 
     def __init__(self, filters, blocks_num, **args):
+        '''初始化网络'''
         super(BlocksLayer, self).__init__(**args)
         self.filters = filters
         self.blocks_num = blocks_num
 
-    def build(self, input_shape):
-        '''初始化网络'''
         self.conv1 = ConvBnMishLayer(self.filters, (3, 3), strides=(2, 2))
         if self.blocks_num == 1:
             self.conv2 = ConvBnMishLayer(self.filters, (1, 1))
@@ -120,75 +179,75 @@ class BlocksLayer(tf.keras.layers.Layer):
             self.concat1 = tf.keras.layers.Concatenate()
             self.conv5 = ConvBnMishLayer(self.filters, (1, 1))
 
-    def call(self, x, training):
+    @tf.function
+    def call(self, x, training=False):
         '''运算部分'''
-        x = self.conv1(x)
+        x = self.conv1(x, training=training)
         if self.blocks_num == 1:
-            y = self.conv2(x)
-            z = self.conv3(y)
-            z = self.conv4(z)
+            y = self.conv2(x, training=training)
+            z = self.conv3(y, training=training)
+            z = self.conv4(z, training=training)
             y = self.add1([y, z])
-            y = self.conv5(y)
-            x = self.conv6(x)
+            y = self.conv5(y, training=training)
+            x = self.conv6(x, training=training)
             x = self.concat1([y, x])
-            x = self.conv7(x)
+            x = self.conv7(x, training=training)
         else:
-            y = self.conv2(x)
+            y = self.conv2(x, training=training)
             for i in range(self.blocks_num):
-                z = self.layer_list[i][0](y)
-                z = self.layer_list[i][1](z)
+                z = self.layer_list[i][0](y, training=training)
+                z = self.layer_list[i][1](z, training=training)
                 y = self.layer_list[i][2]([y, z])
-            y = self.conv3(y)
-            x = self.conv4(x)
+            y = self.conv3(y, training=training)
+            x = self.conv4(x, training=training)
             x = self.concat1([y, x])
-            x = self.conv5(x)
+            x = self.conv5(x, training=training)
         return x
 
-class LastLayer(tf.keras.layers.Layer):
+class LastLayer(tf.keras.Model):
     '''自定义层'''
 
     def __init__(self, filters, **args):
+        '''初始化网络'''
         super(LastLayer, self).__init__(**args)
         self.filters = filters
 
-    def build(self, input_shape):
-        '''初始化网络'''
         self.conv3 = ConvBnLReluLayer(self.filters, (1, 1))
         self.conv4 = ConvBnLReluLayer(self.filters * 2, (3, 3))
         self.conv5 = ConvBnLReluLayer(self.filters, (1, 1))
         # SPP
-        self.max_pool1 = tf.keras.layers.AveragePooling2D(pool_size=(13, 13), strides=(1, 1), padding='same')
-        self.max_pool2 = tf.keras.layers.AveragePooling2D(pool_size=(9, 9), strides=(1, 1), padding='same')
-        self.max_pool3 = tf.keras.layers.AveragePooling2D(pool_size=(5, 5), strides=(1, 1), padding='same')
+        self.max_pool1 = tf.keras.layers.MaxPooling2D(pool_size=(13, 13), strides=(1, 1), padding='same')
+        self.max_pool2 = tf.keras.layers.MaxPooling2D(pool_size=(9, 9), strides=(1, 1), padding='same')
+        self.max_pool3 = tf.keras.layers.MaxPooling2D(pool_size=(5, 5), strides=(1, 1), padding='same')
         self.concat2 = tf.keras.layers.Concatenate()
         self.conv6 = ConvBnLReluLayer(self.filters, (1, 1))
         self.conv7 = ConvBnLReluLayer(self.filters * 2, (3, 3))
         self.conv8 = ConvBnLReluLayer(self.filters, (1, 1))
 
+    @tf.function
     def call(self, x, training=False):
         '''运算部分'''
-        x = self.conv3(x)
-        x = self.conv4(x)
-        x = self.conv5(x)
+        x = self.conv3(x, training=training)
+        x = self.conv4(x, training=training)
+        x = self.conv5(x, training=training)
         # SPP
         x2 = self.max_pool1(x)
         x3 = self.max_pool2(x)
         x4 = self.max_pool3(x)
         x = self.concat2([x2, x3, x4, x])
-        x = self.conv6(x)
-        x = self.conv7(x)
-        x = self.conv8(x)
+        x = self.conv6(x, training=training)
+        x = self.conv7(x, training=training)
+        x = self.conv8(x, training=training)
         return x
 
-class LastLayer2(tf.keras.layers.Layer):
+class LastLayer2(tf.keras.Model):
     '''自定义层'''
 
     def __init__(self, filters, **args):
+        '''初始化网络'''
         super(LastLayer2, self).__init__(**args)
         self.filters = filters
 
-    def build(self, input_shape):
-        '''初始化网络'''
         self.conv1 = ConvBnLReluLayer(self.filters, (1, 1))
         self.up1 = tf.keras.layers.UpSampling2D((2, 2))
         self.conv2 = ConvBnLReluLayer(self.filters, (1, 1))
@@ -199,48 +258,48 @@ class LastLayer2(tf.keras.layers.Layer):
         self.conv7 = ConvBnLReluLayer(self.filters * 2, (3, 3))
         self.conv8 = ConvBnLReluLayer(self.filters, (1, 1))
 
+    @tf.function
     def call(self, x, z, training=False):
         '''运算部分'''
-        z = self.conv1(z)
+        z = self.conv1(z, training=training)
         z = self.up1(z)
-        x = self.conv2(x)
+        x = self.conv2(x, training=training)
         x = self.concat1([z, x])
-        x = self.conv3(x)
-        x = self.conv4(x)
-        x = self.conv5(x)
-        x = self.conv7(x)
-        x = self.conv8(x)
+        x = self.conv3(x, training=training)
+        x = self.conv4(x, training=training)
+        x = self.conv5(x, training=training)
+        x = self.conv7(x, training=training)
+        x = self.conv8(x, training=training)
         return x
 
-class OutputLayer(tf.keras.layers.Layer):
+class OutputLayer(tf.keras.Model):
     '''自定义层'''
 
     def __init__(self, filters, output_num, **args):
+        '''初始化网络'''
         super(OutputLayer, self).__init__(**args)
         self.filters = filters
         self.output_num = output_num
 
-    def build(self, input_shape):
-        '''初始化网络'''
         self.conv7 = ConvBnLReluLayer(self.filters * 2, (3, 3))
         self.conv8 = ConvLayer(self.output_num, (1, 1), use_bias=True)
 
+    @tf.function
     def call(self, x, training=False):
         '''运算部分'''
-        y = self.conv7(x)
-        y = self.conv8(y)
+        y = self.conv7(x, training=training)
+        y = self.conv8(y, training=training)
         return x, y
 
-class OutputLayer2(tf.keras.layers.Layer):
+class OutputLayer2(tf.keras.Model):
     '''自定义层'''
 
     def __init__(self, filters, output_num, **args):
+        '''初始化网络'''
         super(OutputLayer2, self).__init__(**args)
         self.filters = filters
         self.output_num = output_num
-
-    def build(self, input_shape):
-        '''初始化网络'''
+        
         self.conv1 = ConvBnLReluLayer(self.filters, (3, 3), strides=(2, 2))
         self.concat1 = tf.keras.layers.Concatenate()
         self.conv2 = ConvBnLReluLayer(self.filters, (1, 1))
@@ -251,17 +310,18 @@ class OutputLayer2(tf.keras.layers.Layer):
         self.conv7 = ConvBnLReluLayer(self.filters * 2, (3, 3))
         self.conv8 = ConvLayer(self.output_num, (1, 1), use_bias=True)
 
+    @tf.function
     def call(self, x, z, training=False):
         '''运算部分'''
-        z = self.conv1(z)
+        z = self.conv1(z, training=training)
         x = self.concat1([z, x])
-        x = self.conv2(x)
-        x = self.conv3(x)
-        x = self.conv4(x)
-        x = self.conv5(x)
-        x = self.conv6(x)
-        y = self.conv7(x)
-        y = self.conv8(y)
+        x = self.conv2(x, training=training)
+        x = self.conv3(x, training=training)
+        x = self.conv4(x, training=training)
+        x = self.conv5(x, training=training)
+        x = self.conv6(x, training=training)
+        y = self.conv7(x, training=training)
+        y = self.conv8(y, training=training)
         return x, y
         
 class Yolov4Model(tf.keras.Model):
@@ -286,48 +346,47 @@ class Yolov4Model(tf.keras.Model):
         self.output2 = OutputLayer2(256, output_num=output_num)
         self.output3 = OutputLayer2(512, output_num=output_num)
 
-    def call(self, x):
+    @tf.function
+    def call(self, x, training=False):
         '''运算部分'''
         # (416 * 416)
-        x = self.conv1(x)
+        x = self.conv1(x, training=training)
         # (208 * 208)
-        x = self.blocks1(x)
+        x = self.blocks1(x, training=training)
         # (104 * 104)
-        x = self.blocks2(x)
+        x = self.blocks2(x, training=training)
         # (52 * 52)
-        x = self.blocks3(x)
+        x = self.blocks3(x, training=training)
         y3 = x
         # (26 * 26)
-        x = self.blocks4(x)
+        x = self.blocks4(x, training=training)
         y2 = x
         # (13 * 13)
-        x = self.blocks5(x)
+        x = self.blocks5(x, training=training)
         y1 = x
         # 计算y1,(13 * 13)
-        y1 = self.last1(y1)
+        y1 = self.last1(y1, training=training)
         # 计算y2,(26 * 26)
-        y2 = self.last2(y2, y1)
+        y2 = self.last2(y2, y1, training=training)
         # 计算y3,(52 * 52)
-        y3 = self.last3(y3, y2)
+        y3 = self.last3(y3, y2, training=training)
         # 计算y3,(52 * 52)
-        z3, y3 = self.output1(y3)
+        z3, y3 = self.output1(y3, training=training)
         # 计算y2,(26 * 26)
-        z2, y2 = self.output2(y2, z3)
+        z2, y2 = self.output2(y2, z3, training=training)
         # 计算y1,(13 * 13)
-        _, y1 = self.output3(y1, z2)
+        _, y1 = self.output3(y1, z2, training=training)
         return (y1, y2, y3)
 
 class SaveCallback(tf.keras.callbacks.Callback):
-    def __init__(self, model_path, max_to_keep=3, **args):
+    def __init__(self, model_path, feature_model):
         '''初始化模型层'''
         super(SaveCallback, self).__init__()
         self.model_path = model_path
-        self.checkpoint = tf.train.Checkpoint(**args)
-        self.checkpoint_manager = tf.train.CheckpointManager(
-            self.checkpoint, self.model_path, max_to_keep=max_to_keep)
+        self.feature_model = feature_model
 
     def on_epoch_end(self, batch, logs=None):
-        save_path = self.checkpoint_manager.save()
+        self.feature_model.save_weights(self.model_path)
         # print('保存模型 {}'.format(save_path))
 
 class Yolov4Loss(tf.keras.losses.Loss):
@@ -338,58 +397,9 @@ class Yolov4Loss(tf.keras.losses.Loss):
         self.classes_num = classes_num
         self.layer_index = layer_index
         self.iou_thresh = 0.5
+        self.smooth_l1_loss = SmoothL1Loss(beta=0.5)
 
     @tf.function
-    def GetIOU(self, b1, b2):
-        '''
-        计算IOU,DIOU,CIOU
-        b1:(1, b1_num, (x1, y1, x2, y2))
-        b2:(..., b2_num, 1, (x1, y1, x2, y2))
-        return:(..., b2_num, b1_num)
-        b1与b2前面维度一样或缺少也可以，返回维度与最多的一样
-        '''
-        # (..., b2_num, b1_num, 2)
-        intersect_mins = tf.math.maximum(b1[..., 0:2], b2[..., 0:2])
-        intersect_maxes = tf.math.minimum(b1[..., 2:4], b2[..., 2:4])
-        intersect_wh = tf.math.maximum(intersect_maxes - intersect_mins, 0.)
-        # (..., b2_num, b1_num)
-        intersect_area = intersect_wh[..., 0] * intersect_wh[..., 1]
-        # (1, b1_num, 2)
-        b1_wh = b1[..., 2:4] - b1[..., 0:2]
-        # (..., b2_num, 1, 2)
-        b2_wh = b2[..., 2:4] - b2[..., 0:2]
-        # (1, b1_num)
-        b1_area = b1_wh[..., 0] * b1_wh[..., 1]
-        # (..., b2_num, 1)
-        b2_area = b2_wh[..., 0] * b2_wh[..., 1]
-        # (h, w, anchors_num, boxes_num)
-        iou = intersect_area / (b1_area + b2_area - intersect_area)
-        # tf.print('iou:', tf.math.reduce_max(iou), tf.math.reduce_min(iou))
-        # 最小外界矩形
-        ub_mins = tf.math.minimum(b1[..., 0:2], b2[..., 0:2])
-        ub_maxes = tf.math.maximum(b1[..., 2:4], b2[..., 2:4])
-        ub_wh = ub_maxes - ub_mins
-        c = tf.math.square(ub_wh[..., 0]) + tf.math.square(ub_wh[..., 1])
-        # 计算中心距离
-        b1_xy = (b1[..., 2:4] + b1[..., 0:2]) / 2
-        b2_xy = (b2[..., 2:4] + b2[..., 0:2]) / 2
-        u = tf.math.reduce_sum(tf.math.square(b1_xy - b2_xy), axis=-1)
-        # 中心距离越近，d值越小
-        d = u / c
-        # tf.print('d:', tf.math.reduce_max(d), tf.math.reduce_min(d))
-        # 两个框宽高比越接近，v值越小
-        v = 4 / tf.math.square(math.pi) * tf.math.square(tf.math.atan(b1_wh[..., 0] / b1_wh[..., 1]) - tf.math.atan(b2_wh[..., 0] / b2_wh[..., 1]))
-        # tf.print('v:', tf.math.reduce_max(v), tf.math.reduce_min(v))
-        alpha = v / (1 - iou + v + 0.000001)
-        # tf.print('alpha:', tf.math.reduce_max(alpha), tf.math.reduce_min(alpha))
-        # 目标不相交时，为负值。目标重叠时为0。
-        diou = iou - d
-        ciou = diou - alpha * v
-        # tf.print('iou:', tf.math.reduce_max(iou), tf.math.reduce_min(iou))
-        # tf.print('diou:', tf.math.reduce_max(diou), tf.math.reduce_min(diou))
-        # tf.print('ciou:', tf.math.reduce_max(ciou), tf.math.reduce_min(ciou))
-        return iou, diou, ciou
-
     def call(self, y_true, y_pred):
         '''
         获取损失值
@@ -446,7 +456,7 @@ class Yolov4Loss(tf.keras.losses.Loss):
         y_pred_raw_wh = y_pred_raw[..., 2:4]
         # tf.print('y_pred_raw_wh:', tf.math.reduce_max(y_pred_raw_wh), tf.math.reduce_min(y_pred_raw_wh))
         y_pred_read_wh = tf.math.exp(y_pred_raw_wh) * anchors_wh[self.layer_index, ...]
-        y_pred_read_wh = tf.where(tf.math.is_inf(y_pred_read_wh), tf.zeros_like(y_pred_read_wh), y_pred_read_wh)
+        # y_pred_read_wh = tf.where(tf.math.is_inf(y_pred_read_wh), tf.zeros_like(y_pred_read_wh), y_pred_read_wh)
         
         # 框坐标(batch_size, h, w, anchors_num, (x1, y1, x2, y2))
         y_true_read_wh_half = y_true_read_wh / 2
@@ -471,7 +481,7 @@ class Yolov4Loss(tf.keras.losses.Loss):
             # (h, w, anchors_num, 4) => (h, w, anchors_num, 1, 4)
             y_pred_boxes_tmp = tf.expand_dims(y_pred_boxes_tmp, axis=-2)
             # (h, w, anchors_num, boxes_num)
-            _, _, iou = self.GetIOU(y_true_boxes_tmp, y_pred_boxes_tmp)
+            iou, _, _ = GetIOU(y_true_boxes_tmp, y_pred_boxes_tmp)
             # (h, w, anchors_num)
             best_iou = tf.math.reduce_max(iou, axis=-1)
             # 把IOU<0.5的认为是背景
@@ -487,8 +497,13 @@ class Yolov4Loss(tf.keras.losses.Loss):
         # 计算loss
         boxes_loss_scale = 2 - y_true_read_wh[..., 0:1] * y_true_read_wh[..., 1:2]
         # tf.print('boxes_loss_scale:', tf.math.reduce_max(boxes_loss_scale), tf.math.reduce_min(boxes_loss_scale))
-        xy_loss = y_true_object * boxes_loss_scale * tf.math.square(y_true_raw_xy - tf.math.sigmoid(y_pred_raw_xy))
-        wh_loss = y_true_object * boxes_loss_scale * tf.math.square(y_true_raw_wh - y_pred_raw_wh)
+        xy_loss_bc = tf.keras.losses.binary_crossentropy(tf.expand_dims(y_true_raw_xy, axis=-1),
+                            tf.expand_dims(y_pred_raw_xy, axis=-1), from_logits=True)
+        xy_loss = y_true_object * boxes_loss_scale * xy_loss_bc
+        # xy_loss = y_true_object * boxes_loss_scale * tf.math.square(y_true_raw_xy - tf.math.sigmoid(y_pred_raw_xy))
+        # xy_loss = y_true_object * boxes_loss_scale * self.smooth_l1_loss(y_true_raw_xy, tf.math.sigmoid(y_pred_raw_xy))
+        # wh_loss = y_true_object * boxes_loss_scale * 0.5 * tf.math.square(y_true_raw_wh - y_pred_raw_wh)
+        wh_loss = y_true_object * boxes_loss_scale * 0.5 * self.smooth_l1_loss(y_true_raw_wh, y_pred_raw_wh)
         object_loss_bc = tf.keras.losses.binary_crossentropy(tf.expand_dims(y_true_object, axis=-1),
                             tf.expand_dims(y_pred_object, axis=-1), from_logits=True)
         # tf.print('object_loss_bc:', tf.math.reduce_max(object_loss_bc), tf.math.reduce_min(object_loss_bc))
@@ -503,6 +518,7 @@ class Yolov4Loss(tf.keras.losses.Loss):
         object_loss = tf.math.reduce_sum(object_loss) / batch_size
         classes_loss = tf.math.reduce_sum(classes_loss) / batch_size
         # tf.print('loss:', xy_loss, wh_loss, object_loss, classes_loss)
+        classes_loss *= 2
         loss = xy_loss + wh_loss + object_loss + classes_loss
         # tf.print('loss:', loss)
         return loss
@@ -538,9 +554,6 @@ class ObjectDetectionModel():
         self.layers_size = layers_size
         # IOU低于这个值，则视为背景
         self.train_iou_thresh = train_iou_thresh
-        # 加载模型路径
-        if not os.path.exists(self.model_path):
-            os.makedirs(self.model_path)
         # 建立模型
         self.BuildModel()
         # 加载模型
@@ -548,9 +561,11 @@ class ObjectDetectionModel():
 
     def BuildModel(self):
         '''建立模型'''
+        self.object_target_indexes = tf.Variable(tf.zeros([3, 2, 52, 52, 3]))
         # 建立特征提取模型
         self.feature_model = Yolov4Model(self.anchors_num, self.classes_num)
         # 优化器
+        # self.optimizer = tf.keras.optimizers.Adam(learning_rate=1e-4)
         self.optimizer = RAdam(learning_rate=1e-4)
         # self.optimizer = AdaX(learning_rate=1e-4)
         self.feature_model.compile(
@@ -558,12 +573,6 @@ class ObjectDetectionModel():
             loss=[Yolov4Loss(self.image_size, self.anchors_wh, 0, self.classes_num),
                   Yolov4Loss(self.image_size, self.anchors_wh, 1, self.classes_num),
                   Yolov4Loss(self.image_size, self.anchors_wh, 2, self.classes_num)])
-        # 保存模型
-        self.checkpoint = tf.train.Checkpoint(
-            optimizer=self.optimizer, 
-            feature_model=self.feature_model)
-        self.checkpoint_manager = tf.train.CheckpointManager(
-            self.checkpoint, self.model_path, max_to_keep=3)
 
     @tf.function
     def GetBoxes(self, y, anchors_wh):
@@ -630,7 +639,7 @@ class ObjectDetectionModel():
                 # 计算IOU
                 boxes_other = boxes_sort[1:, :]
                 indexes_other = scores_sort_indexes[1:]
-                _, iou, _ = self.GetIOU(boxes_top, boxes_other)
+                iou, _, _ = GetIOU(boxes_top, boxes_other)
                 iou_mask = iou < iou_threshold
                 boxes_sort = tf.boolean_mask(boxes_other, iou_mask)
                 scores_sort_indexes = tf.boolean_mask(indexes_other, iou_mask)
@@ -731,57 +740,6 @@ class ObjectDetectionModel():
         return selected_boxes, selected_classes_id, selected_scores, selected_classes, selected_confidence
 
     @tf.function
-    def GetIOU(self, b1, b2):
-        '''
-        计算IOU,DIOU,CIOU
-        b1:(1, b1_num, (x1, y1, x2, y2))
-        b2:(..., b2_num, 1, (x1, y1, x2, y2))
-        return:(..., b2_num, b1_num)
-        b1与b2前面维度一样或缺少也可以，返回维度与最多的一样
-        '''
-        # (..., b2_num, b1_num, 2)
-        intersect_mins = tf.math.maximum(b1[..., 0:2], b2[..., 0:2])
-        intersect_maxes = tf.math.minimum(b1[..., 2:4], b2[..., 2:4])
-        intersect_wh = tf.math.maximum(intersect_maxes - intersect_mins, 0.)
-        # (..., b2_num, b1_num)
-        intersect_area = intersect_wh[..., 0] * intersect_wh[..., 1]
-        # (1, b1_num, 2)
-        b1_wh = b1[..., 2:4] - b1[..., 0:2]
-        # (..., b2_num, 1, 2)
-        b2_wh = b2[..., 2:4] - b2[..., 0:2]
-        # (1, b1_num)
-        b1_area = b1_wh[..., 0] * b1_wh[..., 1]
-        # (..., b2_num, 1)
-        b2_area = b2_wh[..., 0] * b2_wh[..., 1]
-        # (h, w, anchors_num, boxes_num)
-        iou = intersect_area / (b1_area + b2_area - intersect_area)
-        # tf.print('iou:', tf.math.reduce_max(iou), tf.math.reduce_min(iou))
-        # 最小外界矩形
-        ub_mins = tf.math.minimum(b1[..., 0:2], b2[..., 0:2])
-        ub_maxes = tf.math.maximum(b1[..., 2:4], b2[..., 2:4])
-        ub_wh = ub_maxes - ub_mins
-        c = tf.math.square(ub_wh[..., 0]) + tf.math.square(ub_wh[..., 1])
-        # 计算中心距离
-        b1_xy = (b1[..., 2:4] + b1[..., 0:2]) / 2
-        b2_xy = (b2[..., 2:4] + b2[..., 0:2]) / 2
-        u = tf.math.reduce_sum(tf.math.square(b1_xy - b2_xy), axis=-1)
-        # 中心距离越近，d值越小
-        d = u / c
-        # tf.print('d:', tf.math.reduce_max(d), tf.math.reduce_min(d))
-        # 两个框宽高比越接近，v值越小
-        v = 4 / tf.math.square(math.pi) * tf.math.square(tf.math.atan(b1_wh[..., 0] / b1_wh[..., 1]) - tf.math.atan(b2_wh[..., 0] / b2_wh[..., 1]))
-        # tf.print('v:', tf.math.reduce_max(v), tf.math.reduce_min(v))
-        alpha = v / (1 - iou + v + 0.000001)
-        # tf.print('alpha:', tf.math.reduce_max(alpha), tf.math.reduce_min(alpha))
-        # 目标不相交时，为负值。目标重叠时为0。
-        diou = iou - d
-        ciou = diou - alpha * v
-        # tf.print('iou:', tf.math.reduce_max(iou), tf.math.reduce_min(iou))
-        # tf.print('diou:', tf.math.reduce_max(diou), tf.math.reduce_min(diou))
-        # tf.print('ciou:', tf.math.reduce_max(ciou), tf.math.reduce_min(ciou))
-        return iou, diou, ciou
-
-    @tf.function
     def GetTarget(self, labels):
         '''
         获取训练Target
@@ -797,6 +755,8 @@ class ObjectDetectionModel():
         anchors_wh = tf.constant(self.anchors_wh, dtype=tf.float32)
         anchors_num = tf.shape(anchors_wh)[1]
         # (9, 2)
+        # tf.print('GetTarget anchors_wh:', tf.shape(anchors_wh), '\n', anchors_wh)
+        # tf.print('GetTarget labels:', tf.shape(labels), '\n', labels)
         anchors_wh = tf.reshape(anchors_wh, (-1, 2))
         anchors_wh = anchors_wh / image_size
         layers_size = tf.constant(self.layers_size, dtype=tf.int32)
@@ -819,7 +779,7 @@ class ObjectDetectionModel():
         # (boxes_num, 4) => (boxes_num, 1, 4)
         boxes = tf.expand_dims(boxes, axis=-2)
         # (boxes_num, 9)
-        _, iou, _ = self.GetIOU(boxes, anchors_boxes)
+        iou, _, _ = GetIOU(boxes, anchors_boxes)
         # (boxes_num, )
         anchors_idx = tf.cast(tf.argmax(iou, axis=-1), tf.int32)
         # tf.print('anchors_idx:', anchors_idx)
@@ -839,6 +799,8 @@ class ObjectDetectionModel():
             batch_labels = tf.boolean_mask(labels, batch_mask)
             batch_anchors_idx = tf.boolean_mask(anchors_idx, batch_mask)
             boxes_size = tf.shape(batch_labels)[0]
+            self.object_target_indexes.assign(tf.zeros([3, batch_size, 52, 52, 3]))
+            # 记录次数，防止物体重叠
             def boxes_foreach(boxes_index, idx, target_indexes, target_updates):
                 # 最优层下标
                 layer_index = batch_anchors_idx[boxes_index] // layers_num
@@ -855,16 +817,19 @@ class ObjectDetectionModel():
                 boxes_wh = boxes_wh / image_size
                 # tf.print('boxes_wh:', boxes_wh)
                 layer_xy = tf.cast(tf.math.floor(boxes_xy * tf.cast(layers_size[layer_index], dtype=tf.float32)), dtype=tf.int32)
-                # tf.print('layer_xy:', layer_xy, layer_index.dtype)
-                # xy下标是反的，因为输入是高宽
-                target_indexes = target_indexes.write(idx, [layer_index, batch_index, layer_xy[1], layer_xy[0], anchor_index])
-                # 传入的是原始坐标数据
-                target_update = tf.concat([boxes_xy, boxes_wh, [1], tf.one_hot(tf.cast(batch_labels[boxes_index, 5], dtype=tf.int32), classes_num)], axis=-1)
-                # tf.print('target_update:', target_update, target_update.dtype)
-                target_updates = target_updates.write(idx, target_update)
-                return boxes_index+1, idx+1, target_indexes, target_updates
-            _, idx, target_indexes, target_updates = tf.while_loop(lambda x, y ,z ,a: x<boxes_size, boxes_foreach, [0, idx, target_indexes, target_updates])
-            return batch_index+1, idx+1, target_indexes, target_updates
+                # tf.print('layer_xy:', layer_xy, layer_index, anchor_index)
+                if self.object_target_indexes[layer_index, batch_index, layer_xy[1], layer_xy[0], anchor_index] == 0:
+                    self.object_target_indexes.scatter_nd_update([[layer_index, batch_index, layer_xy[1], layer_xy[0], anchor_index]], [1])
+                    # xy下标是反的，因为输入是高宽
+                    target_indexes = target_indexes.write(idx, [layer_index, batch_index, layer_xy[1], layer_xy[0], anchor_index])
+                    # 传入的是原始坐标数据
+                    target_update = tf.concat([boxes_xy, boxes_wh, [1], tf.one_hot(tf.cast(batch_labels[boxes_index, 5], dtype=tf.int32), classes_num)], axis=-1)
+                    # tf.print('target_update:', target_update, target_update.dtype)
+                    target_updates = target_updates.write(idx, target_update)
+                    idx = idx + 1
+                return boxes_index+1, idx, target_indexes, target_updates
+            _, idx, target_indexes, target_updates = tf.while_loop(lambda x, *args: x<boxes_size, boxes_foreach, [0, idx, target_indexes, target_updates])
+            return batch_index+1, idx, target_indexes, target_updates
         _, idx, target_indexes, target_updates = tf.while_loop(lambda x, y ,z ,a: x<batch_size, batch_foreach, [0, idx, target_indexes, target_updates])
 
         target_indexes = target_indexes.stack()
@@ -890,17 +855,16 @@ class ObjectDetectionModel():
         '''批量训练'''
         
         # 训练回调方法
-        self.reduce_lr = tf.keras.callbacks.ReduceLROnPlateau(monitor='loss', factor=0.3, patience=10, verbose=1, mode='min', cooldown=5, min_lr=1e-6)
-        self.early_stopping = tf.keras.callbacks.EarlyStopping(monitor='loss', min_delta=0, patience=20, verbose=1, restore_best_weights=True)
+        self.reduce_lr = tf.keras.callbacks.ReduceLROnPlateau(monitor='loss', factor=0.3, patience=3, verbose=1, mode='min', cooldown=5, min_lr=1e-6)
+        self.early_stopping = tf.keras.callbacks.EarlyStopping(monitor='loss', min_delta=0, patience=4, verbose=1, restore_best_weights=True)
         self.save_callback = SaveCallback(self.model_path,
-            optimizer=self.optimizer, 
             feature_model=self.feature_model)
         self.optimizer.learning_rate = learning_rate
         self.feature_model.fit(dataset,
             steps_per_epoch=steps_per_epoch,
             epochs=epochs,
             initial_epoch=initial_epoch,
-            callbacks=[self.save_callback, self.reduce_lr, self.early_stopping])
+            callbacks=[self.reduce_lr, self.early_stopping, self.save_callback])
 
     @tf.function
     def Predict(self, input_image, scores_thresh=0.5, iou_thresh=0.5):
@@ -923,16 +887,16 @@ class ObjectDetectionModel():
 
     def SaveModel(self):
         '''保存模型'''
-        save_path = self.checkpoint_manager.save()
-        print('保存模型 {}'.format(save_path))
+        self.feature_model.save_weights(self.model_path)
+        print('保存模型 {}'.format(self.model_path))
 
     def LoadModel(self):
         '''加载模型'''
-        if self.checkpoint_manager.latest_checkpoint:
-            self.checkpoint.restore(self.checkpoint_manager.latest_checkpoint)
-            # self.feature_model.load_weights(self.checkpoint_manager.latest_checkpoint)
-            print('加载模型 {}'.format(self.checkpoint_manager.latest_checkpoint))
-        # self.feature_model.summary()
+        _ = self.feature_model(tf.ones((1, 416, 416, 3)))
+        if os.path.exists(self.model_path):
+            self.feature_model.load_weights(self.model_path)
+            print('加载模型 {}'.format(self.model_path))
+        self.feature_model.summary()
 
 
 def main():

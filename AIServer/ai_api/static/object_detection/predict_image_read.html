@@ -7,7 +7,7 @@
 
 <body>
   <input id="selectFile" type="file" />
-  <input id="btnSubmit" type="button" title="测试" value="测试"></input> 估计值：<span id="txtValue"></span>
+  <input id="btnSubmit" type="button" title="测试" value="测试"></input>
   <br />
   <span>
     原图：
@@ -42,7 +42,6 @@
             console.log(response);
             document.getElementById('random_img').src = 'data:image/jpg;base64,' + response.data.random_img;
             document.getElementById('result_img').src = 'data:image/jpg;base64,' + response.data.result_img;
-            document.getElementById('txtValue').innerText = response.data.values;
           })
           .catch(function (error) {
             console.log(error);
