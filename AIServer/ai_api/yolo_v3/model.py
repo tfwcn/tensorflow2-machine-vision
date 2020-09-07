@@ -18,7 +18,7 @@ class DarknetConv2D(tf.keras.Model):
     @tf.function
     def call(self, x, training):
         '''运算部分'''
-        x = self.conv1(x, training=training)
+        x = self.conv1(x)
         return x
 
 
@@ -37,9 +37,9 @@ class DarknetConv2D_BN_Leaky(tf.keras.Model):
     @tf.function
     def call(self, x, training):
         '''运算部分'''
-        x = self.conv1(x, training=training)
+        x = self.conv1(x)
         x = self.bn1(x, training=training)
-        x = self.leaky_relu1(x, training=training)
+        x = self.leaky_relu1(x)
         # x = self.dorp_block1(x, training=training)
         return x
 
@@ -67,12 +67,12 @@ class ResblockBody(tf.keras.Model):
     @tf.function
     def call(self, x, training):
         '''运算部分'''
-        x = self.zero_padding1(x, training=training)
+        x = self.zero_padding1(x)
         x = self.darknet_conv_bn_leaky1(x, training=training)
         for block in self.blocks:
             y = block[0](x, training=training)
             y = block[1](y, training=training)
-            x = block[2]([x, y], training=training)
+            x = block[2]([x, y])
         return x
         
     def get_config(self):
@@ -178,13 +178,13 @@ class YoloV3Model(tf.keras.Model):
         x, y1 = self.last_layers1(y1, training=training)
 
         x = self.darknet_conv_bn_leaky1(x, training=training)
-        x = self.up_sampling1(x, training=training)
-        x = self.concatenate1([x, y2], training=training)
+        x = self.up_sampling1(x)
+        x = self.concatenate1([x, y2])
         x, y2 = self.last_layers2(x, training=training)
 
         x = self.darknet_conv_bn_leaky2(x, training=training)
-        x = self.up_sampling2(x, training=training)
-        x = self.concatenate2([x, y3], training=training)
+        x = self.up_sampling2(x)
+        x = self.concatenate2([x, y3])
         x, y3 = self.last_layers3(x, training=training)
         return y1, y2, y3
         
