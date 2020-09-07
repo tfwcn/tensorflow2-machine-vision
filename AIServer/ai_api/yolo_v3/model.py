@@ -32,7 +32,7 @@ class DarknetConv2D_BN_Leaky(tf.keras.Model):
         self.conv1 = DarknetConv2D(*args, **no_bias_kwargs)
         self.bn1 = tf.keras.layers.BatchNormalization()
         self.leaky_relu1 = tf.keras.layers.LeakyReLU(alpha=0.1)
-        self.dorp_block1 = DorpBlock(0.1, block_size=3)
+        # self.dorp_block1 = DorpBlock(0.1, block_size=3)
 
     @tf.function
     def call(self, x, training):
@@ -40,7 +40,7 @@ class DarknetConv2D_BN_Leaky(tf.keras.Model):
         x = self.conv1(x, training=training)
         x = self.bn1(x, training=training)
         x = self.leaky_relu1(x, training=training)
-        x = self.dorp_block1(x, training=training)
+        # x = self.dorp_block1(x, training=training)
         return x
 
 
