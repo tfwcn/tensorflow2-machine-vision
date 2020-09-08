@@ -100,11 +100,11 @@ class DarknetBody(tf.keras.Model):
         x = self.resblock_body1(x, training=training)
         x = self.resblock_body2(x, training=training)
         x = self.resblock_body3(x, training=training)
-        y3 = x
+        y3 = tf.identity(x)
         x = self.resblock_body4(x, training=training)
-        y2 = x
+        y2 = tf.identity(x)
         x = self.resblock_body5(x, training=training)
-        y1 = x
+        y1 = tf.identity(x)
         return y1, y2, y3
 
 
