@@ -15,7 +15,7 @@ class DarknetConv2D(tf.keras.Model):
         # print('darknet_conv_kwargs:', darknet_conv_kwargs)
         self.conv1 = tf.keras.layers.Conv2D(*args, **darknet_conv_kwargs)
 
-    @tf.function
+    # @tf.function
     def call(self, x, training):
         '''运算部分'''
         x = self.conv1(x)
@@ -34,7 +34,7 @@ class DarknetConv2D_BN_Leaky(tf.keras.Model):
         self.leaky_relu1 = tf.keras.layers.LeakyReLU(alpha=0.1)
         # self.dorp_block1 = DorpBlock(0.1, block_size=3)
 
-    @tf.function
+    # @tf.function
     def call(self, x, training):
         '''运算部分'''
         x = self.conv1(x)
@@ -64,7 +64,7 @@ class ResblockBody(tf.keras.Model):
                 tf.keras.layers.Add()
                 ])
 
-    @tf.function
+    # @tf.function
     def call(self, x, training):
         '''运算部分'''
         x = self.zero_padding1(x)
@@ -93,18 +93,18 @@ class DarknetBody(tf.keras.Model):
         self.resblock_body4 = ResblockBody(512, 8)
         self.resblock_body5 = ResblockBody(1024, 4)
 
-    @tf.function
+    # @tf.function
     def call(self, x, training):
         '''运算部分'''
         x = self.darknet_conv_bn_leaky1(x, training=training)
         x = self.resblock_body1(x, training=training)
         x = self.resblock_body2(x, training=training)
         x = self.resblock_body3(x, training=training)
-        y3 = tf.identity(x)
+        y3 = x
         x = self.resblock_body4(x, training=training)
-        y2 = tf.identity(x)
+        y2 = x
         x = self.resblock_body5(x, training=training)
-        y1 = tf.identity(x)
+        y1 = x
         return y1, y2, y3
 
 
@@ -126,7 +126,7 @@ class LastLayers(tf.keras.Model):
         self.darknet_conv_bn_leaky6 = DarknetConv2D_BN_Leaky(self.num_filters*2, (3,3))
         self.darknetConv2D1 = DarknetConv2D(self.out_filters, (1,1))
 
-    @tf.function
+    # @tf.function
     def call(self, x, training):
         '''运算部分'''
         x = self.darknet_conv_bn_leaky1(x, training=training)
@@ -170,7 +170,7 @@ class YoloV3Model(tf.keras.Model):
 
         self.loss_obj = Yolov4Loss(anchors=self.anchors,classes_num=self.classes_num)
 
-    @tf.function
+    # @tf.function
     def call(self, x, training):
         '''运算部分'''
         y1, y2, y3 = self.darknet_body1(x, training=training)
@@ -192,7 +192,7 @@ class YoloV3Model(tf.keras.Model):
         '''获取配置，用于保存模型'''
         return {'anchors_num': self.anchors_num, 'classes_num': self.classes_num}
     
-    @tf.function
+    # @tf.function
     def GetBoxes(self, y, anchors_wh):
         '''将偏移转换成真实值，范围0到1'''
         # 拆分特征
@@ -232,7 +232,7 @@ class YoloV3Model(tf.keras.Model):
         classes = tf.boolean_mask(classes, mask)
         return y_pred_boxes, confidence, classes
     
-    @tf.function
+    # @tf.function
     def GetIOU(self, b1, b2):
         '''
         计算IOU,DIOU,CIOU
@@ -283,7 +283,7 @@ class YoloV3Model(tf.keras.Model):
         # tf.print('ciou:', tf.math.reduce_max(ciou), tf.math.reduce_min(ciou))
         return iou, diou, ciou
 
-    @tf.function
+    # @tf.function
     def GetDIOUNMS(self,
                    boxes,
                    scores,
@@ -321,7 +321,7 @@ class YoloV3Model(tf.keras.Model):
         result_indexes = result_indexes.stack()
         return result_indexes
 
-    @tf.function
+    # @tf.function
     def GetNMSBoxes(self, y1, y2, y3, scores_thresh, iou_thresh):
         '''经过NMS去重后，转换成框坐标'''
         # 拆分维度
@@ -409,7 +409,7 @@ class YoloV3Model(tf.keras.Model):
         # tf.print('selected_boxes:', tf.shape(selected_boxes))
         return selected_boxes, selected_classes_id, selected_scores, selected_classes, selected_confidence
 
-    @tf.function
+    # @tf.function
     def train_step(self, data):
         '''训练'''
         # Unpack the data. Its structure depends on your model and
@@ -443,7 +443,7 @@ class YoloV3Model(tf.keras.Model):
         # return {m.name: m.result() for m in self.metrics}
         return {'loss': loss}
 
-    @tf.function
+    # @tf.function
     def test_step(self, data):
         '''评估'''
         x, y = data
