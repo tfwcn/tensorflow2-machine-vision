@@ -8,8 +8,8 @@ import cv2
 import math
 
 sys.path.append(os.getcwd())
-from ai_api.utils.radam import RAdam
-from ai_api.utils.mish import Mish
+from ai_api.ai_models.utils.radam import RAdam
+from ai_api.ai_models.utils.mish import Mish
 
 class Yolov4Model():
     '''Yolov4模型'''

@@ -10,10 +10,10 @@ import random
 import xml.dom.minidom as xml
 
 sys.path.append(os.getcwd())
-import ai_api.utils.image_helper as ImageHelper
-import ai_api.utils.file_helper as FileHelper
-import ai_api.yolo_v4.data_helper_xray as DataHelper
-from ai_api.yolo_v4.model2 import ObjectDetectionModel
+import ai_api.ai_models.utils.image_helper as ImageHelper
+import ai_api.ai_models.utils.file_helper as FileHelper
+import ai_api.ai_models.yolo_v4.data_helper_xray as DataHelper
+from ai_api.ai_models.yolo_v4.model2 import ObjectDetectionModel
 
 # 把模型的变量分布在哪个GPU上给打印出来
 # tf.debugging.set_log_device_placement(True)

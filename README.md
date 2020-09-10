@@ -37,7 +37,7 @@ https://github.com/tfwcn/labelme
 ### 训练
 
 ```bash
-python ./ai_api/yolo_v4/train_label2.py --file_path "素材目录" --batch_size 8
+python ./ai_api/ai_models/yolo_v4/train_label2.py --file_path "素材目录" --batch_size 8
 ```
 
 ### 测试

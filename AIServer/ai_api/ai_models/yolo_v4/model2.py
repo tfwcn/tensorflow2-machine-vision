@@ -8,9 +8,9 @@ import cv2
 import math
 
 sys.path.append(os.getcwd())
-from ai_api.utils.radam import RAdam
-from ai_api.utils.mish import Mish
-from ai_api.utils.smooth_l1_loss import SmoothL1Loss
+from ai_api.ai_models.utils.radam import RAdam
+from ai_api.ai_models.utils.mish import Mish
+from ai_api.ai_models.utils.smooth_l1_loss import SmoothL1Loss
 
 
 @tf.function

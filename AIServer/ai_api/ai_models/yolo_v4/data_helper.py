@@ -5,7 +5,7 @@ import random
 import tensorflow as tf
 
 sys.path.append(os.getcwd())
-import ai_api.utils.image_helper as ImageHelper
+import ai_api.ai_models.utils.image_helper as ImageHelper
 
 def GetRandomImage(image, points=None):
     '''生成随机图片'''

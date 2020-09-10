@@ -4,9 +4,9 @@ import tensorflow as tf
 import sys
 import os
 sys.path.append(os.getcwd())
-from ai_api.yolo_v3.model import YoloV3Model
-from ai_api.yolo_v3.dataset_coco import GetDataSet
-from ai_api.utils.radam import RAdam
+from ai_api.ai_models.yolo_v3.model import YoloV3Model
+from ai_api.ai_models.datasets.coco_dataset import GetDataSet
+from ai_api.ai_models.utils.radam import RAdam
 
 import argparse
 

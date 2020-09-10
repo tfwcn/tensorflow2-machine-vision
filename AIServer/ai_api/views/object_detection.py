@@ -8,9 +8,9 @@ import random
 import numpy as np
 import math
 import time
-# from ai_api.yolo_v4.model import Yolov4Model
-from ai_api.yolo_v4.model2 import ObjectDetectionModel as Yolov4Model
-import ai_api.utils.image_helper as ImageHelper
+# from ai_api.ai_models.yolo_v4.model import Yolov4Model
+from ai_api.ai_models.yolo_v4.model2 import ObjectDetectionModel as Yolov4Model
+import ai_api.ai_models.utils.image_helper as ImageHelper
 
 # 下标转名称
 classes_name = {

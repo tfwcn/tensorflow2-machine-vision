@@ -7,7 +7,7 @@ from matplotlib.colors import rgb_to_hsv, hsv_to_rgb
 import sys
 import os
 sys.path.append(os.getcwd())
-import ai_api.utils.image_helper as ImageHelper
+import ai_api.ai_models.utils.image_helper as ImageHelper
 
 
 class DataGenerator():

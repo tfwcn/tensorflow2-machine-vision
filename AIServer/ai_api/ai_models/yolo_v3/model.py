@@ -1,8 +1,8 @@
 import tensorflow as tf
-from ai_api.yolo_v3.loss import Yolov4Loss
 import math
-from ai_api.yolo_v3.mAP import Get_mAP_one
-from ai_api.utils.drop_block import DorpBlock
+from ai_api.ai_models.losses.yolo_loss import Yolov4Loss
+from ai_api.ai_models.utils.mAP import Get_mAP_one
+from ai_api.ai_models.utils.drop_block import DorpBlock
 
 class DarknetConv2D(tf.keras.Model):
 
@@ -472,6 +472,7 @@ class YoloV3Model(tf.keras.Model):
         mAP = tf.numpy_function(Get_mAP_one, (groud_truth, prediction, self.classes_num, 0.5), tf.float64)
         return {'mAP': mAP}
     
+    @tf.function
     def GetGroudTruth(self, y):
         boxes_xy, boxes_wh, confidence, classes = tf.split(
             y, (2, 2, 1, self.classes_num), axis=-1)
