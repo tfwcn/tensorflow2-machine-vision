@@ -2,3 +2,4 @@ data
 image_data
 __pycache__
 .vscode
+p_*
