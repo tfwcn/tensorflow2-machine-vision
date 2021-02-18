@@ -7,7 +7,7 @@ class FocalLoss(tf.keras.losses.Loss):
   where pt is the probability of being classified to the true class.
   """
 
-  def __init__(self, alpha, gamma, label_smoothing=0.0, **kwargs):
+  def __init__(self, alpha=0.25, gamma=1.5, label_smoothing=0.0, **kwargs):
     """Initialize focal loss.
 
     Args:
@@ -23,7 +23,7 @@ class FocalLoss(tf.keras.losses.Loss):
     self.label_smoothing = label_smoothing
 
   @tf.autograph.experimental.do_not_convert
-  def call(self, y_true, y_pred):
+  def call(self, y, y_pred):
     """Compute focal loss for y and y_pred.
 
     Args:
@@ -33,29 +33,20 @@ class FocalLoss(tf.keras.losses.Loss):
     Returns:
       the focal loss.
     """
-    class_targets = y_true
-    class_outputs, mask = y_pred
-    alpha = tf.convert_to_tensor(self.alpha, dtype=y_pred[0][0].dtype)
-    gamma = tf.convert_to_tensor(self.gamma, dtype=y_pred[0][0].dtype)
+    normalizer, y_true = y
+    alpha = tf.convert_to_tensor(self.alpha, dtype=y_pred.dtype)
+    gamma = tf.convert_to_tensor(self.gamma, dtype=y_pred.dtype)
 
-    total_loss = 0
-    for i in range(len(class_targets)):
-      mask_one = tf.cast(mask[i], dtype=tf.float32)
-      class_targets_one = class_targets[i]
-      class_outputs_one = class_outputs[i]
-      normalizer = tf.reduce_sum(mask_one) / tf.cast(tf.shape(mask_one)[0], tf.float32)
-      # compute focal loss multipliers before label smoothing, such that it will
-      # not blow up the loss.
-      pred_prob = tf.sigmoid(class_outputs_one)
-      p_t = (class_targets_one * pred_prob) + ((1 - class_targets_one) * (1 - pred_prob))
-      alpha_factor = class_targets_one * alpha + (1 - class_targets_one) * (1 - alpha)
-      modulating_factor = (1.0 - p_t)**gamma
+    # compute focal loss multipliers before label smoothing, such that it will
+    # not blow up the loss.
+    pred_prob = tf.sigmoid(y_pred)
+    p_t = (y_true * pred_prob) + ((1 - y_true) * (1 - pred_prob))
+    alpha_factor = y_true * alpha + (1 - y_true) * (1 - alpha)
+    modulating_factor = (1.0 - p_t)**gamma
 
-      # apply label smoothing for cross_entropy for each entry.
-      class_targets_one = class_targets_one * (1.0 - self.label_smoothing) + 0.5 * self.label_smoothing
-      ce = tf.nn.sigmoid_cross_entropy_with_logits(labels=class_targets_one, logits=class_outputs_one)
-      # ce = tf.math.log(tf.math.square(class_targets_one-class_outputs_one)*4+1)
+    # apply label smoothing for cross_entropy for each entry.
+    y_true = y_true * (1.0 - self.label_smoothing) + 0.5 * self.label_smoothing
+    ce = tf.nn.sigmoid_cross_entropy_with_logits(labels=y_true, logits=y_pred)
 
-      # compute the final loss and return
-      total_loss += tf.reduce_sum(tf.math.divide_no_nan(alpha_factor * modulating_factor * ce , normalizer))
-    return total_loss
+    # compute the final loss and return
+    return alpha_factor * modulating_factor * ce / normalizer

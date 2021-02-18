@@ -101,9 +101,13 @@ def get_iou(boxes1, boxes2, iou_type = 'iou'):
 
 
 def main():
-  boxes1 = tf.constant([[10,10,11,12]], dtype=tf.float32)
-  # boxes2 = tf.constant([[10.5,10,13,12]], dtype=tf.float32)
-  boxes2 = tf.constant([[10,10,11,12]], dtype=tf.float32)
+  boxes1 = tf.constant([[10,10,30,30]], dtype=tf.float32)
+  # boxes2 = tf.constant([[10,10,30,30]], dtype=tf.float32)
+  boxes2 = tf.constant([[20,20,40,40]], dtype=tf.float32)
+  iou = get_iou(boxes1, boxes2, iou_type='iou')
+  print(iou)
+  iou = get_iou(boxes1, boxes2, iou_type='diou')
+  print(iou)
   iou = get_iou(boxes1, boxes2, iou_type='ciou')
   print(iou)
 

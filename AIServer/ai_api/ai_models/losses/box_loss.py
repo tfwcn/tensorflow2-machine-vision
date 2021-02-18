@@ -19,19 +19,12 @@ class BoxLoss(tf.keras.losses.Loss):
 
   @tf.autograph.experimental.do_not_convert
   def call(self, y_true, box_outputs):
-    box_targets = y_true
-    box_outputs, mask = box_outputs
-    total_loss = 0
-    for i in range(len(box_targets)):
-      mask_one = tf.cast(mask[i], dtype=tf.float32)
-      box_targets_one = box_targets[i]
-      box_outputs_one = box_outputs[i]
-      num_positives = tf.reduce_sum(mask_one) / tf.cast(tf.shape(mask_one)[0], tf.float32)
-      normalizer = num_positives * 4.0
-      box_targets_one = tf.expand_dims(box_targets_one, axis=-1)
-      box_outputs_one = tf.expand_dims(box_outputs_one, axis=-1)
-      box_loss = self.huber(box_targets_one, box_outputs_one) * mask_one
-      box_loss = tf.reduce_sum(box_loss)
-      box_loss = tf.math.divide_no_nan(box_loss,normalizer)
-      total_loss+=box_loss
-    return total_loss
+    num_positives, box_targets = y_true
+    normalizer = num_positives * 4.0
+    mask = tf.cast(box_targets != 0.0, tf.float32)
+    box_targets = tf.expand_dims(box_targets, axis=-1)
+    box_outputs = tf.expand_dims(box_outputs, axis=-1)
+    box_loss = self.huber(box_targets, box_outputs) * mask
+    box_loss = tf.reduce_sum(box_loss)
+    box_loss /= normalizer
+    return box_loss

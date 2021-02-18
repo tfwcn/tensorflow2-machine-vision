@@ -32,7 +32,7 @@ class DataGenerator(object):
     with open(self.classes_path, 'r', encoding='utf-8') as f:
         self.classes = f.readlines()
     # 0:BG
-    self.classes = [0] + [c.strip() for c in self.classes]
+    self.classes = ['BG'] + [c.strip() for c in self.classes]
     self.classes_num = len(self.classes)
     print('已加载%d个类型' % (self.classes_num-1))
 
@@ -205,11 +205,12 @@ class DataGenerator(object):
       i = (i+1) % n
       if len(classes) == 0:
         continue
-
+      
+      # tf.print('boxes:', boxes)
       yield image, boxes, classes
 
 
-def GetDataSet(image_path, label_path, classes_path, batch_size, anchors, is_train=True):
+def GetDataSet(image_path, label_path, classes_path, batch_size, anchors: Anchors, is_train=True):
   '''获取数据集'''
   data_generator = DataGenerator(image_path, label_path, classes_path, anchors, is_train)
   # 数据预处理
@@ -231,11 +232,14 @@ def GetDataSet(image_path, label_path, classes_path, batch_size, anchors, is_tra
       return image, y_true_boxes, y_true_classes, y_true_masks
     dataset = dataset.map(map_fun)
     dataset = dataset.batch(batch_size)
-    for x, y, z, m in dataset.take(1):
-        print(x.shape, 
-          y[0].shape, y[1].shape, y[2].shape, y[3].shape, y[4].shape,
-          z[0].shape, z[1].shape, z[2].shape, z[3].shape, z[4].shape,
-          m[0].shape, m[1].shape, m[2].shape, m[3].shape, m[4].shape)
+    # for x, y_true_boxes, y_true_classes, y_true_masks in dataset.take(1):
+    #   # y_true_boxes = anchors.convert_outputs_boxes(y_true_boxes)
+    #   # convert_boxes,convert_classes_id,convert_scores=anchors.convert_outputs_one(0, y_true_boxes, y_true_classes)
+    #   # tf.print('outputs boxes:', convert_boxes)
+    #   print(x.shape, 
+    #     y_true_boxes[0].shape, y_true_boxes[1].shape, y_true_boxes[2].shape, y_true_boxes[3].shape, y_true_boxes[4].shape,
+    #     y_true_classes[0].shape, y_true_classes[1].shape, y_true_classes[2].shape, y_true_classes[3].shape, y_true_classes[4].shape,
+    #     y_true_masks[0].shape, y_true_masks[1].shape, y_true_masks[2].shape, y_true_masks[3].shape, y_true_masks[4].shape)
   else:
     def map_fun(image, boxes, classes):
       # 返回维度不同，不能用batch_size>1
@@ -243,11 +247,11 @@ def GetDataSet(image_path, label_path, classes_path, batch_size, anchors, is_tra
       return image, boxes, classes, y_true_boxes, y_true_classes, y_true_masks
     dataset = dataset.map(map_fun)
     dataset = dataset.batch(batch_size)
-    for x, _, _, y, z, m in dataset.take(1):
-        print(x.shape, 
-          y[0].shape, y[1].shape, y[2].shape, y[3].shape, y[4].shape,
-          z[0].shape, z[1].shape, z[2].shape, z[3].shape, z[4].shape,
-          m[0].shape, m[1].shape, m[2].shape, m[3].shape, m[4].shape)
+    # for x, _, _, y, z, m in dataset.take(1):
+    #   print(x.shape, 
+    #     y[0].shape, y[1].shape, y[2].shape, y[3].shape, y[4].shape,
+    #     z[0].shape, z[1].shape, z[2].shape, z[3].shape, z[4].shape,
+    #     m[0].shape, m[1].shape, m[2].shape, m[3].shape, m[4].shape)
   return dataset, data_generator
 
 def main():

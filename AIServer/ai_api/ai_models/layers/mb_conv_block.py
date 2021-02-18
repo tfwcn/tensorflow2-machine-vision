@@ -3,6 +3,7 @@ from absl import logging
 import itertools
 from ai_api.ai_models.utils.conv_kernel_initializer import conv_kernel_initializer
 from ai_api.ai_models.layers.se import SE
+from ai_api.ai_models.layers.attention_conv import AttentionConv2D
 
 class MBConvBlock(tf.keras.layers.Layer):
   """A class of MBConv: Mobile Inverted Residual Bottleneck.
@@ -66,6 +67,14 @@ class MBConvBlock(tf.keras.layers.Layer):
           padding='same',
           use_bias=False,
           name=get_conv_name())
+      # self._expand_conv = AttentionConv2D(
+      #     filters=filters,
+      #     kernel_size=[1, 1],
+      #     strides=[1, 1],
+      #     kernel_initializer=conv_kernel_initializer,
+      #     padding='same',
+      #     use_bias=False,
+      #     name=get_conv_name())
       self._bn0 = tf.keras.layers.BatchNormalization(
           momentum=self._batch_norm_momentum,
           epsilon=self._batch_norm_epsilon,
@@ -101,6 +110,14 @@ class MBConvBlock(tf.keras.layers.Layer):
         padding='same',
         use_bias=False,
         name=get_conv_name())
+    # self._project_conv = AttentionConv2D(
+    #     filters=filters,
+    #     kernel_size=[1, 1],
+    #     strides=[1, 1],
+    #     kernel_initializer=conv_kernel_initializer,
+    #     padding='same',
+    #     use_bias=False,
+    #     name=get_conv_name())
     self._bn2 = tf.keras.layers.BatchNormalization(
         momentum=self._batch_norm_momentum,
         epsilon=self._batch_norm_epsilon,

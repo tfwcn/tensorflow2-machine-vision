@@ -12,6 +12,7 @@ from ai_api.ai_models.utils.radam import RAdam
 from ai_api.ai_models.utils.global_params import get_efficientdet_config
 from ai_api.ai_models.efficientnet.utils.anchors import Anchors
 from ai_api.ai_models.utils.block_args import EfficientDetBlockArgs
+from ai_api.ai_models.callbacks.save import SaveCallback
 
 import argparse
 
@@ -30,16 +31,6 @@ valData = args.valData
 valLabels = args.valLabels
 classesFile = args.classesFile
 
-
-class SaveCallback(tf.keras.callbacks.Callback):
-    def __init__(self, path):
-        '''初始化模型层'''
-        super(SaveCallback, self).__init__()
-        self.path = path
-
-    def on_epoch_end(self, batch, logs=None):
-        self.model.save_weights(self.path)
-        # print('\n保存模型:{}'.format(self.path))
 
 class CosineLrSchedule(tf.optimizers.schedules.LearningRateSchedule):
   """Cosine learning rate schedule."""
@@ -103,6 +94,7 @@ def train():
         label_path=valLabels,
         classes_path=classesFile, batch_size=1, anchors=anchors, is_train=False)
     steps_per_epoch = max(1, data_generator_train.labels_num//batch_size//10)
+    # steps_per_epoch = 50
 
     # 构建模型
     model = EfficientDetNetTrain(blocks_args=blocks_args, global_params=config, anchors=anchors)
@@ -116,8 +108,9 @@ def train():
     lr_warmup_step = int(1.0 * steps_per_epoch)
     total_steps = int(num_epochs * steps_per_epoch)
     learning_rate = CosineLrSchedule(adjusted_learning_rate,
-                            lr_warmup_init, lr_warmup_step,
-                            total_steps)
+                                     lr_warmup_init, lr_warmup_step,
+                                     total_steps)
+    # learning_rate = 0.1
     optimizer = tf.keras.optimizers.SGD(
         learning_rate, momentum=0.9)
         
@@ -143,7 +136,7 @@ def train():
     #     monitor='val_loss', save_weights_only=True, save_best_only=True, period=3)
     # 训练回调方法
     early_stopping = tf.keras.callbacks.EarlyStopping(
-        monitor='loss', min_delta=0, patience=10, verbose=1)
+        monitor='val_loss', min_delta=0, patience=10, verbose=1)
     # reduce_lr = tf.keras.callbacks.ReduceLROnPlateau(monitor='loss', factor=0.3, patience=6, verbose=1, mode='min', min_delta=0.0, min_lr=1e-6)
     # early_stopping = tf.keras.callbacks.EarlyStopping(monitor='loss', min_delta=0, patience=10, verbose=1, mode='min', restore_best_weights=True)
 

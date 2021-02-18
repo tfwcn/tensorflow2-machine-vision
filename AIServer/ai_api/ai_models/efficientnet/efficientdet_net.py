@@ -92,6 +92,6 @@ class EfficientDetNet(tf.keras.Model):
     # call class/box/seg output network.
     classes_outputs = self.class_net(fpn_feats, training)
     boxes_outputs = self.box_net(fpn_feats, training)
-    return classes_outputs, boxes_outputs
+    return boxes_outputs, classes_outputs
 
 

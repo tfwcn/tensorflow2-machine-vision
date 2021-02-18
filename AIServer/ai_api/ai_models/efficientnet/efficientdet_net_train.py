@@ -10,12 +10,13 @@ from ai_api.ai_models.utils.mAP import Get_mAP_one
 
 class EfficientDetNetTrain(EfficientDetNet):
 
-  def __init__(self, blocks_args, global_params, anchors: Anchors, name=''):
+  def __init__(self, blocks_args, global_params, anchors: Anchors, name='', min_lr=1e-6):
     """Initialize model."""
     super().__init__(blocks_args=blocks_args, global_params=global_params, name=name)
     self.anchors = anchors
     self.box_loss = BoxLoss()
     self.focal_loss = FocalLoss(self._global_params.alpha, self._global_params.gamma, label_smoothing=0.0)
+    self.min_lr = min_lr
 
   def _reg_l2_loss(self, weight_decay, regex=r'.*(kernel|weight):0$'):
     """Return regularization l2 loss loss."""
@@ -25,21 +26,101 @@ class EfficientDetNetTrain(EfficientDetNet):
         for v in self.trainable_variables
         if var_match.match(v.name)
     ])
+    
+  def build(self, input_shape):
+    result = super().build(input_shape)
+    trainable_vars = self.trainable_variables
+    self.bak_trainable_vars = []
+    for var in trainable_vars:
+      self.bak_trainable_vars.append(tf.Variable(var, trainable=False))
+    self.bak_trainable_last_vars = []
+    for var in trainable_vars:
+      self.bak_trainable_last_vars.append(tf.Variable(var, trainable=False))
+    return result
 
-  @tf.function
+  def _get_loss(self, y_true_boxes, y_true_classes, y_true_masks, y_pred_boxes, y_pred_classes):
+    loss = self._reg_l2_loss(4e-5)
+    num_positives_sum = 0.0
+    for level in range(len(y_true_boxes)):
+      num_positives_sum += tf.reduce_sum(tf.cast(y_true_masks[level], tf.float32))
+    num_positives_sum += 1.0
+    for level in range(len(y_true_boxes)):
+      loss_b = self.box_loss([num_positives_sum, y_true_boxes[level]], y_pred_boxes[level])
+      loss_c = self.focal_loss([num_positives_sum, y_true_classes[level]], y_pred_classes[level])
+      # tf.print('loss:', loss_b, loss_c)
+      loss += loss_b * 50.0 + loss_c
+    return loss
+
   def train_step(self, data):
-    '''训练'''
+    # 正常训练流程
+    return self.train_step_normal(data)
+    # 动态学习速率训练流程
+    # return self.train_step_fast(data)
+
+
+  def train_step_fast(self, data):
+    '''
+    动态学习速率
+    '''
+    # Unpack the data. Its structure depends on your model and
+    # on what you pass to `fit()`.
+    x, y_true_boxes, y_true_classes, y_true_masks = data
+    loss = 0.0
+    new_loss = 1.0
+    # self.optimizer.learning_rate.assign(0.1)
+    y_pred = self(x, training=True)  # Forward pass
+    def loop_fun(loss, new_loss, y_pred, lr, gnorm):
+      with tf.GradientTape() as tape:
+        y_pred_boxes, y_pred_classes = self(x, training=True)
+        loss = self._get_loss(y_true_boxes, y_true_classes, y_true_masks, y_pred_boxes, y_pred_classes)
+
+      # Compute gradients
+      trainable_vars = self.trainable_variables
+      # 记录训练前的权重
+      for i in range(len(trainable_vars)):
+        self.bak_trainable_vars[i].assign(trainable_vars[i])
+
+      # Compute gradients
+      trainable_vars = self.trainable_variables
+      gradients = tape.gradient(loss, trainable_vars)
+      # tf.clip_by_global_norm，将梯度限制在10.0内，防止loss异常导致梯度爆炸
+      gradients, gnorm = tf.clip_by_global_norm(gradients,
+                                                10.0)
+      self.optimizer.learning_rate.adjusted_lr = lr
+      self.optimizer.apply_gradients(zip(gradients, trainable_vars))
+      
+      y_pred_boxes, y_pred_classes = self(x, training=True)
+      new_loss = self._get_loss(y_true_boxes, y_true_classes, y_true_masks, y_pred_boxes, y_pred_classes)
+      # 记录训练后的权重
+      for i in range(len(trainable_vars)):
+        self.bak_trainable_last_vars[i].assign(trainable_vars[i])
+      # 还原训练前的权重
+      for i in range(len(trainable_vars)):
+        trainable_vars[i].assign(self.bak_trainable_vars[i])
+      # y_pred_boxes, y_pred_classes = self(x, training=True)
+      # old_loss = self._get_loss(y_true_boxes, y_true_classes, y_true_masks, y_pred_boxes, y_pred_classes)
+      # tf.print('new_loss:', loss, new_loss, old_loss, self.optimizer.learning_rate.adjusted_lr)
+      return (loss, new_loss, y_pred, lr * 0.3, gnorm)
+    loss, new_loss, y_pred, _, gnorm = tf.while_loop(lambda loss, new_loss, y_pred, lr, gnorm: tf.math.logical_and(loss<=new_loss,lr>self.min_lr), loop_fun, (loss, new_loss, y_pred, 0.05, 0.0))
+
+    # 恢复最佳权重
+    trainable_vars = self.trainable_variables
+    for i in range(len(trainable_vars)):
+      trainable_vars[i].assign(self.bak_trainable_last_vars[i])
+    return {'loss': loss, 'gnorm': gnorm}
+
+  def train_step_normal(self, data):
+    '''
+    正常训练流程
+    '''
     # Unpack the data. Its structure depends on your model and
     # on what you pass to `fit()`.
     # print('data:', data)
     x, y_true_boxes, y_true_classes, y_true_masks = data
-    loss = self._reg_l2_loss(4e-5)
+    loss = 0.0
     with tf.GradientTape() as tape:
-        y_pred_classes, y_pred_boxes = self(x, training=True)
-        loss_b = self.box_loss(y_true_boxes, (y_pred_boxes, y_true_masks))
-        loss_c = self.focal_loss(y_true_classes, (y_pred_classes, y_true_masks))
-        # tf.print('loss:', loss_b, loss_c)
-        loss += loss_b * 50.0 + loss_c
+      y_pred_boxes, y_pred_classes = self(x, training=True)
+      loss = self._get_loss(y_true_boxes, y_true_classes, y_true_masks, y_pred_boxes, y_pred_classes)
 
     # Compute gradients
     trainable_vars = self.trainable_variables
@@ -50,7 +131,7 @@ class EfficientDetNetTrain(EfficientDetNet):
     self.optimizer.apply_gradients(zip(gradients, trainable_vars))
     return {'loss': loss, 'gnorm': gnorm}
 
-  @tf.function
+  # @tf.function
   def test_step(self, data):
     '''评估'''
     # x: [batch_size,h,w,3]
@@ -58,47 +139,30 @@ class EfficientDetNetTrain(EfficientDetNet):
     # y_true_classes: [batch_size,obj_num,]
     x, y_real_boxes, y_real_classes, y_true_boxes, y_true_classes, y_true_masks = data
     batch_size = tf.shape(x)[0]
-    y_pred_classes, y_pred_boxes = self(x, training=False)
+    y_pred_boxes, y_pred_classes = self(x, training=False)
     loss = self._reg_l2_loss(4e-5)
-    loss_b = self.box_loss(y_true_boxes, (y_pred_boxes, y_true_masks))
-    loss_c = self.focal_loss(y_true_classes, (y_pred_classes, y_true_masks))
-    # tf.print('loss:', loss_b, loss_c)
-    loss += loss_b * 50.0 + loss_c
-    boxes_outputs = self.anchors.convert_outputs_boxes(y_pred_boxes)
+    num_positives_sum = 0.0
+    for level in range(len(y_true_boxes)):
+      num_positives_sum += tf.reduce_sum(tf.cast(y_true_masks[level], tf.float32))
+    num_positives_sum += 1.0
+    for level in range(len(y_true_boxes)):
+      loss_b = self.box_loss([num_positives_sum, y_true_boxes[level]], y_pred_boxes[level])
+      loss_c = self.focal_loss([num_positives_sum, y_true_classes[level]], y_pred_classes[level])
+      # tf.print('loss:', loss_b, loss_c)
+      loss += loss_b * 50.0 + loss_c
+    y_pred_boxes = self.anchors.convert_outputs_boxes(y_pred_boxes)
+    # tf.print('boxes_outputs:', boxes_outputs)
     mAP = tf.constant(0.0, dtype=tf.float32)
     for batch in tf.range(batch_size):
-      nms_boxes = []
-      nms_classes_id = []
-      nms_scores = []
-      for level in range(len(y_pred_classes)):
-        # 转换classes结果(boxes_num,)
-        classes_outputs_item = y_pred_classes[level][batch]
-        classes_id = tf.math.argmax(classes_outputs_item, axis=-1)
-        classes_scores = tf.math.reduce_max(classes_outputs_item, axis=-1)
-        # 转换boxes结果(boxes_num,4)
-        boxes_outputs_item = boxes_outputs[level][batch]
-        # 选出有效目标，去除背景
-        classes_mask = tf.math.not_equal(classes_id,0)
-        nms_boxes.append(tf.boolean_mask(boxes_outputs_item,classes_mask))
-        nms_classes_id.append(tf.boolean_mask(classes_id,classes_mask))
-        nms_scores.append(tf.boolean_mask(classes_scores,classes_mask))
-      nms_boxes = tf.concat(nms_boxes,axis=0)
-      nms_classes_id = tf.concat(nms_classes_id,axis=0)
-      nms_scores = tf.concat(nms_scores,axis=0)
-      # NMS去重
-      nms_indexes = get_nms(nms_boxes,nms_scores,max_output_size=200,iou_threshold=0.5,score_threshold=0.0001,iou_type='diou')
-      # [目标数,4]
-      nms_boxes = tf.gather(nms_boxes,nms_indexes)
-      # [目标数,]
-      nms_classes_id = tf.gather(nms_classes_id,nms_indexes)
-      # [目标数,]
-      nms_scores = tf.gather(nms_scores,nms_indexes)
+      convert_boxes, convert_classes_id, convert_scores = self.anchors.convert_outputs_one(batch, y_pred_boxes, y_pred_classes)
 
-      prediction = tf.concat([nms_boxes,
-        tf.cast(tf.expand_dims(nms_classes_id, axis=-1), dtype=tf.float32),
-        tf.expand_dims(nms_scores, axis=-1)], axis=-1)
+      prediction = tf.concat([convert_boxes,
+        tf.cast(tf.expand_dims(convert_classes_id, axis=-1), dtype=tf.float32),
+        tf.expand_dims(convert_scores, axis=-1)], axis=-1)
       groud_truth = tf.concat([y_real_boxes[batch],
         tf.cast(tf.expand_dims(y_real_classes[batch], axis=-1), dtype=tf.float32)], axis=-1)
+      # tf.print('prediction:', prediction)
+      # tf.print('groud_truth:', groud_truth)
       mAP_one = tf.numpy_function(Get_mAP_one, (groud_truth, prediction, self._global_params.num_classes, 0.5), tf.float64)
       mAP += tf.cast(tf.reshape(mAP_one,()), tf.float32)
     mAP /= tf.cast(batch_size, dtype=tf.float32)

@@ -2,6 +2,7 @@ from inspect import stack
 import tensorflow as tf
 from ai_api.ai_models.efficientnet.utils.get_feat_sizes import get_feat_sizes
 from ai_api.ai_models.efficientnet.utils.iou import get_iou
+from ai_api.ai_models.efficientnet.utils.nms import get_nms
 from typing import Tuple, List, Union
 import numpy as np
 
@@ -13,7 +14,8 @@ class Anchors(object):
   Anchors计算与转换
   '''
   def __init__(self, min_level: int, max_level: int, image_size: Tuple[int, int],
-               num_scales: int, aspect_ratios: List[Tuple[float, float]], anchor_scale: Union[float, List[float]]):
+               num_scales: int, aspect_ratios: List[Tuple[float, float]],
+               anchor_scale: Union[float, List[float]]):
     '''
     Args:
       image_size: (H, W)
@@ -39,6 +41,7 @@ class Anchors(object):
     self.feat_sizes = get_feat_sizes(self.image_size, self.max_level)
     # print('feat_sizes: ', self.feat_sizes)
     self.boxes = self._generate_boxes()
+    # print('boxes: ', self.boxes)
 
   @tf.function
   def _generate_boxes(self):
@@ -87,7 +90,7 @@ class Anchors(object):
   @tf.function
   def generate_targets(self, boxes, classes, classes_num, iou_threshold=0.5):
     '''
-    boxes转成targets
+    boxes转成targets(已验证)
 
     Args:
       boxes: [boxes_size, 4]
@@ -101,18 +104,27 @@ class Anchors(object):
     output_classes = []
     output_mask = []
     # 增加一维，用于计算iou
-    boxes_reshape = tf.reshape(boxes, (1, -1, 4))
+    # boxes_reshape = tf.reshape(boxes, (1, 1, -1, 4))
     classes_reshape = tf.reshape(classes, (-1, 1))
     for anchor_level in self.boxes:
       # 计算IOU
+      # [h,w,1,[y1,x1,y2,x2]]
       anchor_reshape = tf.expand_dims(anchor_level, axis=-2)
       # iou: [h,w,anchors,boxes_num]
-      iou = get_iou(anchor_reshape, boxes_reshape)
+      iou = get_iou(anchor_reshape, boxes)
+      # tf.print('iou:', iou)
       # iou_index: [h,w,anchors]
       iou_index = tf.math.argmax(iou, axis=-1)
+      # iou_max: [h,w,anchors]
       iou_max = tf.math.reduce_max(iou, axis=-1)
-      iou_mask = tf.expand_dims(tf.math.greater_equal(iou_max, iou_threshold), axis=-1)
+      # iou_mask: [h,w,anchors]
+      iou_mask = tf.math.greater_equal(iou_max, iou_threshold)
+      # tf.print('iou_mask:', iou_mask)
+      # iou_mask: [h,w,anchors,1]
+      iou_mask = tf.expand_dims(iou_mask, axis=-1)
+      # boxes_level: [h,w,anchors,[y1,x1,y2,x2]]
       boxes_level = tf.gather(boxes, iou_index, axis=0)
+      # classes_level: [h,w,anchors,class_id]
       classes_level = tf.gather(classes_reshape, iou_index, axis=0)
       # 转编码
       boxes_level = self._boxes_encoder(anchor_level, boxes_level)
@@ -140,8 +152,54 @@ class Anchors(object):
     for level in range(len(self.boxes)):
       boxes_level = outputs_boxes[level]
       anchor_level = self.boxes[level]
+      # tf.print('boxes_level:', tf.shape(boxes_level))
+      # tf.print('anchor_level:', tf.shape(anchor_level))
       convert_boxes.append(self._boxes_decoder(anchor_level,boxes_level))
     return tuple(convert_boxes)
+
+  @tf.function
+  def convert_outputs_one(self, batch_index, outputs_boxes, outputs_classes):
+    # tf.print('boxes_outputs:', boxes_outputs)
+    # tf.print('outputs_classes:', outputs_classes)
+    # for batch in tf.range(batch_size):
+    nms_boxes = []
+    nms_classes_id = []
+    nms_scores = []
+    for level in range(len(outputs_classes)):
+      # 转换classes结果(boxes_num,)
+      classes_outputs_item = outputs_classes[level][batch_index]
+      # tf.print('classes_outputs_item:', classes_outputs_item)
+      classes_id = tf.math.argmax(classes_outputs_item, axis=-1)
+      # tf.print('classes_id:', classes_id)
+      classes_scores = tf.math.reduce_max(classes_outputs_item, axis=-1)
+      # tf.print('classes_scores:', classes_scores)
+      # 转换boxes结果(boxes_num,4)
+      boxes_outputs_item = outputs_boxes[level][batch_index]
+      # 选出有效目标，去除背景
+      classes_mask = tf.math.not_equal(classes_id,0)
+      # tf.print('classes_mask:', classes_mask)
+      nms_boxes.append(tf.boolean_mask(boxes_outputs_item,classes_mask))
+      # tf.print('nms_boxes:', nms_boxes)
+      nms_classes_id.append(tf.boolean_mask(classes_id,classes_mask))
+      # tf.print('nms_classes_id:', nms_classes_id)
+      nms_scores.append(tf.boolean_mask(classes_scores,classes_mask))
+      # tf.print('nms_scores:', nms_scores)
+    nms_boxes = tf.concat(nms_boxes,axis=0)
+    nms_classes_id = tf.concat(nms_classes_id,axis=0)
+    nms_scores = tf.concat(nms_scores,axis=0)
+    # NMS去重
+    nms_indexes = get_nms(nms_boxes,nms_scores,max_output_size=200,iou_threshold=0.5,score_threshold=0.0001,iou_type='diou')
+    # tf.print('nms_indexes:', nms_indexes)
+    # [目标数,4]
+    nms_boxes = tf.gather(nms_boxes,nms_indexes)
+    # tf.print('nms_boxes:', nms_boxes)
+    # [目标数,]
+    nms_classes_id = tf.gather(nms_classes_id,nms_indexes)
+    # tf.print('nms_classes_id:', nms_classes_id)
+    # [目标数,]
+    nms_scores = tf.math.sigmoid(tf.gather(nms_scores,nms_indexes))
+    # tf.print('nms_scores:', nms_scores)
+    return nms_boxes, nms_classes_id, nms_scores
 
   def _get_center_coordinates_and_sizes(self, boxes):
     '''

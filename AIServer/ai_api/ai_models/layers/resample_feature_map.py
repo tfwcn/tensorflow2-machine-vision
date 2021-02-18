@@ -1,5 +1,6 @@
 import tensorflow as tf
 import functools
+from ai_api.ai_models.layers.attention_conv import AttentionConv2D
 
 class ResampleFeatureMap(tf.keras.layers.Layer):
   def __init__(self,
@@ -24,6 +25,10 @@ class ResampleFeatureMap(tf.keras.layers.Layer):
         self.target_num_channels, (1, 1),
         padding='same',
         name='conv2d')
+      # self.conv1 = AttentionConv2D(
+      #   self.target_num_channels, (1, 1),
+      #   padding='same',
+      #   name='conv2d')
       self.bn1 = tf.keras.layers.BatchNormalization(name='bn')
     if height>self.level_size:
       # tf.print('ResampleFeatureMap MaxPooling2D')

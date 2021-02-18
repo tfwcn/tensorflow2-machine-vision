@@ -12,7 +12,7 @@ efficientdet_model_param_dict = {
       box_class_repeats=3,
       width_coefficient=1.0,
       depth_coefficient=1.0,
-      resolution=224,
+      # resolution=224,
       dropout_rate=0.2,
     ),
   'efficientdet-d1':
@@ -25,7 +25,20 @@ efficientdet_model_param_dict = {
       box_class_repeats=3,
       width_coefficient=1.0,
       depth_coefficient=1.1,
-      resolution=240,
+      # resolution=240,
+      dropout_rate=0.2,
+    ),
+  'efficientdet-d1-a':
+    dict(
+      name='efficientdet-d1-a',
+      backbone_name='efficientnet-b1-a',
+      image_size=640,
+      fpn_num_filters=88,
+      fpn_cell_repeats=4,
+      box_class_repeats=3,
+      width_coefficient=0.8,
+      depth_coefficient=0.8,
+      # resolution=240,
       dropout_rate=0.2,
     ),
   'efficientdet-d2':
@@ -38,7 +51,7 @@ efficientdet_model_param_dict = {
       box_class_repeats=3,
       width_coefficient=1.1,
       depth_coefficient=1.2,
-      resolution=260,
+      # resolution=260,
       dropout_rate=0.3,
     ),
   'efficientdet-d3':
@@ -51,7 +64,7 @@ efficientdet_model_param_dict = {
       box_class_repeats=4,
       width_coefficient=1.2,
       depth_coefficient=1.4,
-      resolution=300,
+      # resolution=300,
       dropout_rate=0.3,
     ),
   'efficientdet-d4':
@@ -64,7 +77,7 @@ efficientdet_model_param_dict = {
       box_class_repeats=4,
       width_coefficient=1.4,
       depth_coefficient=1.8,
-      resolution=380,
+      # resolution=380,
       dropout_rate=0.4,
     ),
   'efficientdet-d5':
@@ -77,7 +90,7 @@ efficientdet_model_param_dict = {
       box_class_repeats=4,
       width_coefficient=1.6,
       depth_coefficient=2.2,
-      resolution=456,
+      # resolution=456,
       dropout_rate=0.4,
     ),
   'efficientdet-d6':
@@ -91,7 +104,7 @@ efficientdet_model_param_dict = {
       fpn_weight_method='sum',  # Use unweighted sum for stability.
       width_coefficient=1.8,
       depth_coefficient=2.6,
-      resolution=528,
+      # resolution=528,
       dropout_rate=0.5,
     ),
   'efficientdet-d7':
@@ -106,7 +119,7 @@ efficientdet_model_param_dict = {
       fpn_weight_method='sum',  # Use unweighted sum for stability.
       width_coefficient=1.8,
       depth_coefficient=2.6,
-      resolution=528,
+      # resolution=528,
       dropout_rate=0.5,
     ),
   'efficientdet-d7x':
@@ -122,7 +135,7 @@ efficientdet_model_param_dict = {
       fpn_weight_method='sum',  # Use unweighted sum for stability.
       width_coefficient=2.0,
       depth_coefficient=3.1,
-      resolution=600,
+      # resolution=600,
       dropout_rate=0.5,
     ),
 }
@@ -149,7 +162,7 @@ def default_detection_configs():
   # 'efficientnet-l2': (4.3, 5.3, 800, 0.5),
   h.width_coefficient = 1.0
   h.depth_coefficient = 1.0
-  h.resolution = 240
+  # h.resolution = 240
   h.dropout_rate = 0.2
   h.depth_divisor = 8
   # FPN取层数范围
@@ -165,7 +178,7 @@ def default_detection_configs():
   h.num_scales = 3
   # aspect ratio with format (w, h). Can be computed with k-mean per dataset.
   h.aspect_ratios = [(1.0, 1.0), (1.4, 0.7), (0.7, 1.4)]
-  h.anchor_scale = 3.0
+  h.anchor_scale = 4.0
   # 1+ actual classes, 0 is reserved for background.
   h.num_classes = 81
   h.survival_prob = 0.8
