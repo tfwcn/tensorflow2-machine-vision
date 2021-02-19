@@ -152,15 +152,17 @@ class FaceNetTrainModel(FaceNetModel):
                                         dtype=tf.float32, 
                                         trainable=False,
                                         initializer=tf.keras.initializers.Zeros())
-      self.shadow_trainable_variables = []
-      tf.print('shadow trainable_variables:', len(self.trainable_variables))
-      for var in self.trainable_variables:
-        new_weight = self.add_weight(name='shadow_' + var.name,
-                                    shape=var.shape, 
-                                    dtype=var.dtype, 
-                                    trainable=False)
-        new_weight.assign(var)
-        self.shadow_trainable_variables.append(new_weight)
+      ema = tf.train.ExponentialMovingAverage(self.moving_average_decay, num_updates=self.global_step)
+      self.add_update(ema.apply(self.trainable_variables))
+      # self.shadow_trainable_variables = []
+      # tf.print('shadow trainable_variables:', len(self.trainable_variables))
+      # for var in self.trainable_variables:
+      #   new_weight = self.add_weight(name='shadow_' + var.name,
+      #                               shape=var.shape, 
+      #                               dtype=var.dtype, 
+      #                               trainable=False)
+      #   new_weight.assign(var)
+      #   self.shadow_trainable_variables.append(new_weight)
 
   @tf.function(input_signature=[
     tf.TensorSpec(shape=(None,None), dtype=tf.float32),
@@ -290,13 +292,13 @@ class FaceNetTrainModel(FaceNetModel):
     
     # MovingAverage
     if self.moving_average:
-      decay = tf.math.minimum(self.moving_average_decay, (1 + self.global_step) / (10 + self.global_step))
-      for i,var in enumerate(trainable_vars):
-        ema_trainable_variable = decay * self.shadow_trainable_variables[i] + (1 - decay) * var
-        # if i == 0:
-        #   tf.print('moving_average:', ema_trainable_variable[0,0,0,0], var[0,0,0,0], self.shadow_trainable_variables[i][0,0,0,0])
-        var.assign(ema_trainable_variable)
-        self.shadow_trainable_variables[i].assign(ema_trainable_variable)
+    #   decay = tf.math.minimum(self.moving_average_decay, (1 + self.global_step) / (10 + self.global_step))
+    #   for i,var in enumerate(trainable_vars):
+    #     ema_trainable_variable = decay * self.shadow_trainable_variables[i] + (1 - decay) * var
+    #     # if i == 0:
+    #     #   tf.print('moving_average:', ema_trainable_variable[0,0,0,0], var[0,0,0,0], self.shadow_trainable_variables[i][0,0,0,0])
+    #     var.assign(ema_trainable_variable)
+    #     self.shadow_trainable_variables[i].assign(ema_trainable_variable)
       # 记录shadow_loss
       self.shadow_loss.assign(loss)
     # 返回一个dict指标名称映射到当前值
