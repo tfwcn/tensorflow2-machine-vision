@@ -4,7 +4,7 @@ import tensorflow as tf
 import sys
 import os
 sys.path.append(os.getcwd())
-from ai_api.ai_models.yolo_v3.model import YoloV3Model
+from ai_api.ai_models.yolo_v4.model import YoloV4Model
 from ai_api.ai_models.datasets.coco_dataset import DataGenerator
 from ai_api.ai_models.utils.radam import RAdam
 from ai_api.ai_models.utils.load_object_detection_data import LoadAnchors
@@ -45,7 +45,7 @@ def train():
   data_set_val = data_generator_val.GetDataSet()
 
   # 构建模型
-  model = YoloV3Model(classes_num=data_generator_train.classes_num, anchors=anchors, image_wh=(416, 416))
+  model = YoloV4Model(classes_num=data_generator_train.classes_num, anchors=anchors, image_wh=(416, 416))
 
   # 编译模型
   print('编译模型')
@@ -53,7 +53,7 @@ def train():
   # model.compile(optimizer=RAdam(lr=1e-4))
 
   # 日志
-  log_dir = './data/yolo_v3_weights/'
+  log_dir = './data/yolo_v4_weights/'
   model_path = log_dir + 'train_weights/'
   old_model_path = log_dir + 'tf2_weights/'
   _ = model(tf.ones((1, 416, 416, 3)))
@@ -78,7 +78,7 @@ def train():
 
   if is_old_model:
     print('旧权重，开始预训练')
-    model.FreeLayer(['darknet_conv2d_58','darknet_conv2d_66', 'darknet_conv2d_74'])
+    model.FreeLayer(['darknet_conv2d_93','darknet_conv2d_101', 'darknet_conv2d_109'])
     model.fit(data_set_train,
       steps_per_epoch=1000,
       epochs=1,

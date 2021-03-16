@@ -93,7 +93,7 @@ class Yolov4Loss(tf.keras.losses.Loss):
         yolo_outputs = y_pred
         # 3层正确值，[(batch_size, 13, 13, 3, 5+classes_num), (batch_size, 26, 26, 3, 5+classes_num), (batch_size, 52, 52, 3, 5+classes_num)]
         y_true = y_true
-        anchor_mask = [[6,7,8], [3,4,5], [0,1,2]] if num_layers==3 else [[3,4,5], [1,2,3]]
+        anchor_mask = [[6,7,8], [3,4,5], [0,1,2]]
         # (416, 416)
         input_shape = tf.keras.backend.cast(tf.keras.backend.shape(yolo_outputs[0])[1:3] * 32, tf.keras.backend.dtype(y_true[0]))
         # [(13, 13), (26, 26), (52, 52)]

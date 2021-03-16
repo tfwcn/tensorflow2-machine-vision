@@ -47,6 +47,8 @@ parser.add_argument('--dropout_rate',
   help='dropout率.', type=float, default=0.0)
 parser.add_argument('--optimizer', type=str, choices=['ADAGRAD', 'ADADELTA', 'ADAM', 'RMSPROP'],
   help='The optimization algorithm to use', default='ADAGRAD')
+parser.add_argument('--weight_decay', 
+  help='权重l2正则化.', type=float, default=0.01)
 
 # Parameters for validation on LFW
 parser.add_argument('--lfw_pairs', type=str,
@@ -82,7 +84,8 @@ def main():
                               moving_average=args.moving_average,
                               moving_average_decay=args.moving_average_decay,
                               loss_decay=args.loss_decay,
-                              strategy=strategy)
+                              strategy=strategy,
+                              weight_decay=args.weight_decay)
 
     o = model(tf.zeros([2,160,160,3], dtype=tf.float32))
     print('out:', o.shape)

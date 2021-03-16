@@ -6,7 +6,7 @@ import sys
 import os
 
 sys.path.append(os.getcwd())
-from ai_api.ai_models.yolo_v3.model import YoloV3Model
+from ai_api.ai_models.yolo_v4.model import YoloV4Model
 import ai_api.ai_models.utils.image_helper as ImageHelper
 from ai_api.ai_models.utils.load_object_detection_data import LoadClasses, LoadAnchors
 
@@ -20,8 +20,8 @@ parser.add_argument('--classesFile', default='./data/coco_classes.txt')
 parser.add_argument('--anchorsFile', default='./data/coco_anchors.txt')
 args = parser.parse_args()
 
-imageFile = args.imageFile
 modelPath = args.modelPath
+imageFile = args.imageFile
 classesFile = args.classesFile
 anchorsFile = args.anchorsFile
   
@@ -33,7 +33,7 @@ def test():
   anchors = LoadAnchors(anchorsFile)
   classes_name, classes_num = LoadClasses(classesFile)
   # 构建模型
-  model = YoloV3Model(classes_num=classes_num, anchors=anchors, image_wh=image_wh)
+  model = YoloV4Model(classes_num=classes_num, anchors=anchors, image_wh=image_wh)
 
   # 编译模型
   print('编译模型')

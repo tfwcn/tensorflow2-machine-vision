@@ -4,36 +4,43 @@ from ai_api.ai_models.backbones.inception_modules import Stem, ReductionA, Basic
 
 
 class InceptionResNetA(tf.keras.layers.Layer):
-  def __init__(self):
+  def __init__(self, weight_decay):
     super(InceptionResNetA, self).__init__()
     self.b1_conv = BasicConv2D(filters=32,
                    kernel_size=(1, 1),
                    strides=1,
-                   padding="same")
+                   padding="same",
+                   weight_decay=weight_decay)
     self.b2_conv1 = BasicConv2D(filters=32,
                   kernel_size=(1, 1),
                   strides=1,
-                  padding="same")
+                  padding="same",
+                  weight_decay=weight_decay)
     self.b2_conv2 = BasicConv2D(filters=32,
                   kernel_size=(3, 3),
                   strides=1,
-                  padding="same")
+                  padding="same",
+                  weight_decay=weight_decay)
     self.b3_conv1 = BasicConv2D(filters=32,
                   kernel_size=(1, 1),
                   strides=1,
-                  padding="same")
+                  padding="same",
+                  weight_decay=weight_decay)
     self.b3_conv2 = BasicConv2D(filters=48,
                   kernel_size=(3, 3),
                   strides=1,
-                  padding="same")
+                  padding="same",
+                  weight_decay=weight_decay)
     self.b3_conv3 = BasicConv2D(filters=64,
                   kernel_size=(3, 3),
                   strides=1,
-                  padding="same")
+                  padding="same",
+                  weight_decay=weight_decay)
     self.conv = Conv2DLinear(filters=384,
                  kernel_size=(1, 1),
                  strides=1,
-                 padding="same")
+                 padding="same",
+                 weight_decay=weight_decay)
 
   def call(self, inputs, training=None, **kwargs):
     b1 = self.b1_conv(inputs, training=training)
@@ -51,28 +58,33 @@ class InceptionResNetA(tf.keras.layers.Layer):
 
 
 class InceptionResNetB(tf.keras.layers.Layer):
-  def __init__(self):
+  def __init__(self, weight_decay):
     super(InceptionResNetB, self).__init__()
     self.b1_conv = BasicConv2D(filters=192,
                    kernel_size=(1, 1),
                    strides=1,
-                   padding="same")
+                   padding="same",
+                   weight_decay=weight_decay)
     self.b2_conv1 = BasicConv2D(filters=128,
                   kernel_size=(1, 1),
                   strides=1,
-                  padding="same")
+                  padding="same",
+                  weight_decay=weight_decay)
     self.b2_conv2 = BasicConv2D(filters=160,
                   kernel_size=(1, 7),
                   strides=1,
-                  padding="same")
+                  padding="same",
+                  weight_decay=weight_decay)
     self.b2_conv3 = BasicConv2D(filters=192,
                   kernel_size=(7, 1),
                   strides=1,
-                  padding="same")
+                  padding="same",
+                  weight_decay=weight_decay)
     self.conv = Conv2DLinear(filters=1152,
                  kernel_size=(1, 1),
                  strides=1,
-                 padding="same")
+                 padding="same",
+                 weight_decay=weight_decay)
 
   def call(self, inputs, training=None, **kwargs):
     b1 = self.b1_conv(inputs, training=training)
@@ -89,28 +101,33 @@ class InceptionResNetB(tf.keras.layers.Layer):
 
 
 class InceptionResNetC(tf.keras.layers.Layer):
-  def __init__(self):
+  def __init__(self, weight_decay):
     super(InceptionResNetC, self).__init__()
     self.b1_conv = BasicConv2D(filters=192,
                    kernel_size=(1, 1),
                    strides=1,
-                   padding="same")
+                   padding="same",
+                   weight_decay=weight_decay)
     self.b2_conv1 = BasicConv2D(filters=192,
                   kernel_size=(1, 1),
                   strides=1,
-                  padding="same")
+                  padding="same",
+                  weight_decay=weight_decay)
     self.b2_conv2 = BasicConv2D(filters=224,
                   kernel_size=(1, 3),
                   strides=1,
-                  padding="same")
+                  padding="same",
+                  weight_decay=weight_decay)
     self.b2_conv3 = BasicConv2D(filters=256,
                   kernel_size=(3, 1),
                   strides=1,
-                  padding="same")
+                  padding="same",
+                  weight_decay=weight_decay)
     self.conv = Conv2DLinear(filters=2144,
                  kernel_size=(1, 1),
                  strides=1,
-                 padding="same")
+                 padding="same",
+                 weight_decay=weight_decay)
 
   def call(self, inputs, training=None, **kwargs):
     b1 = self.b1_conv(inputs, training=training)
@@ -127,7 +144,7 @@ class InceptionResNetC(tf.keras.layers.Layer):
 
 
 class ReductionB(tf.keras.layers.Layer):
-  def __init__(self):
+  def __init__(self, weight_decay):
     super(ReductionB, self).__init__()
     self.b1_maxpool = tf.keras.layers.MaxPool2D(pool_size=(3, 3),
                           strides=2,
@@ -135,31 +152,38 @@ class ReductionB(tf.keras.layers.Layer):
     self.b2_conv1 = BasicConv2D(filters=256,
                   kernel_size=(1, 1),
                   strides=1,
-                  padding="same")
+                  padding="same",
+                  weight_decay=weight_decay)
     self.b2_conv2 = BasicConv2D(filters=384,
                   kernel_size=(3, 3),
                   strides=2,
-                  padding="valid")
+                  padding="valid",
+                  weight_decay=weight_decay)
     self.b3_conv1 = BasicConv2D(filters=256,
                   kernel_size=(1, 1),
                   strides=1,
-                  padding="same")
+                  padding="same",
+                  weight_decay=weight_decay)
     self.b3_conv2 = BasicConv2D(filters=288,
                   kernel_size=(3, 3),
                   strides=2,
-                  padding="valid")
+                  padding="valid",
+                  weight_decay=weight_decay)
     self.b4_conv1 = BasicConv2D(filters=256,
                   kernel_size=(1, 1),
                   strides=1,
-                  padding="same")
+                  padding="same",
+                  weight_decay=weight_decay)
     self.b4_conv2 = BasicConv2D(filters=288,
                   kernel_size=(3, 3),
                   strides=1,
-                  padding="same")
+                  padding="same",
+                  weight_decay=weight_decay)
     self.b4_conv3 = BasicConv2D(filters=320,
                   kernel_size=(3, 3),
                   strides=2,
-                  padding="valid")
+                  padding="valid",
+                  weight_decay=weight_decay)
 
   def call(self, inputs, training=None, **kwargs):
     b1 = self.b1_maxpool(inputs)
@@ -177,24 +201,24 @@ class ReductionB(tf.keras.layers.Layer):
     return tf.concat(values=[b1, b2, b3, b4], axis=-1)
 
 
-def build_inception_resnet_a(n):
+def build_inception_resnet_a(n, weight_decay):
   block = tf.keras.Sequential()
   for _ in range(n):
-    block.add(InceptionResNetA())
+    block.add(InceptionResNetA(weight_decay))
   return block
 
 
-def build_inception_resnet_b(n):
+def build_inception_resnet_b(n, weight_decay):
   block = tf.keras.Sequential()
   for _ in range(n):
-    block.add(InceptionResNetB())
+    block.add(InceptionResNetB(weight_decay))
   return block
 
 
-def build_inception_resnet_c(n):
+def build_inception_resnet_c(n, weight_decay):
   block = tf.keras.Sequential()
   for _ in range(n):
-    block.add(InceptionResNetC())
+    block.add(InceptionResNetC(weight_decay))
   return block
 
 
@@ -202,19 +226,21 @@ class InceptionResNetV2(tf.keras.Model):
   def __init__(self,
                classes,
                classifier_activation=tf.keras.activations.softmax,
-               dropout_rate:float=0.2):
+               dropout_rate:float=0.2,
+               weight_decay:float=0.01):
     super(InceptionResNetV2, self).__init__()
     self.stem = Stem()
-    self.inception_resnet_a = build_inception_resnet_a(5)
-    self.reduction_a = ReductionA(k=256, l=256, m=384, n=384)
-    self.inception_resnet_b = build_inception_resnet_b(10)
-    self.reduction_b = ReductionB()
-    self.inception_resnet_c = build_inception_resnet_c(5)
+    self.inception_resnet_a = build_inception_resnet_a(5,weight_decay)
+    self.reduction_a = ReductionA(k=256, l=256, m=384, n=384, weight_decay=weight_decay)
+    self.inception_resnet_b = build_inception_resnet_b(10,weight_decay)
+    self.reduction_b = ReductionB(weight_decay)
+    self.inception_resnet_c = build_inception_resnet_c(5,weight_decay)
     self.avgpool = tfa.layers.AdaptiveAveragePooling2D(output_size=(1,1))
     self.dropout = tf.keras.layers.Dropout(rate=dropout_rate)
     self.flat = tf.keras.layers.Flatten()
     self.fc = tf.keras.layers.Dense(units=classes,
-                    activation=classifier_activation)
+                    activation=classifier_activation,
+                    kernel_regularizer=tf.keras.regularizers.L2(weight_decay))
 
   def call(self, inputs, training=None, mask=None):
     x = self.stem(inputs, training=training)

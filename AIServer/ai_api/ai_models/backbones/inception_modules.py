@@ -2,12 +2,13 @@ import tensorflow as tf
 
 
 class BasicConv2D(tf.keras.layers.Layer):
-  def __init__(self, filters, kernel_size, strides, padding):
+  def __init__(self, filters, kernel_size, strides, padding, weight_decay):
     super(BasicConv2D, self).__init__()
     self.conv = tf.keras.layers.Conv2D(filters=filters,
                        kernel_size=kernel_size,
                        strides=strides,
-                       padding=padding)
+                       padding=padding,
+                       kernel_regularizer=tf.keras.regularizers.L2(weight_decay))
     self.bn = tf.keras.layers.BatchNormalization()
 
   def call(self, inputs, training=None, **kwargs):
@@ -19,12 +20,13 @@ class BasicConv2D(tf.keras.layers.Layer):
 
 
 class Conv2DLinear(tf.keras.layers.Layer):
-  def __init__(self, filters, kernel_size, strides, padding):
+  def __init__(self, filters, kernel_size, strides, padding, weight_decay):
     super(Conv2DLinear, self).__init__()
     self.conv = tf.keras.layers.Conv2D(filters=filters,
                        kernel_size=kernel_size,
                        strides=strides,
-                       padding=padding)
+                       padding=padding,
+                       kernel_regularizer=tf.keras.regularizers.L2(weight_decay))
     self.bn = tf.keras.layers.BatchNormalization()
 
   def call(self, inputs, training=None, **kwargs):
@@ -35,55 +37,66 @@ class Conv2DLinear(tf.keras.layers.Layer):
 
 
 class Stem(tf.keras.layers.Layer):
-  def __init__(self):
+  def __init__(self, weight_decay):
     super(Stem, self).__init__()
     self.conv1 = BasicConv2D(filters=32,
                  kernel_size=(3, 3),
                  strides=2,
-                 padding="valid")
+                 padding="valid",
+                 weight_decay=weight_decay)
     self.conv2 = BasicConv2D(filters=32,
                  kernel_size=(3, 3),
                  strides=1,
-                 padding="valid")
+                 padding="valid",
+                 weight_decay=weight_decay)
     self.conv3 = BasicConv2D(filters=64,
                  kernel_size=(3, 3),
                  strides=1,
-                 padding="same")
+                 padding="same",
+                 weight_decay=weight_decay)
     self.b1_maxpool = tf.keras.layers.MaxPool2D(pool_size=(3, 3),
                           strides=2,
                           padding="valid")
     self.b2_conv = BasicConv2D(filters=96,
                    kernel_size=(3, 3),
                    strides=2,
-                   padding="valid")
+                   padding="valid",
+                   weight_decay=weight_decay)
     self.b3_conv1 = BasicConv2D(filters=64,
                   kernel_size=(1, 1),
                   strides=1,
-                  padding="same")
+                  padding="same",
+                  weight_decay=weight_decay)
     self.b3_conv2 = BasicConv2D(filters=96,
                   kernel_size=(3, 3),
                   strides=1,
-                  padding="valid")
+                  padding="valid",
+                  weight_decay=weight_decay)
     self.b4_conv1 = BasicConv2D(filters=64,
                   kernel_size=(1, 1),
                   strides=1,
-                  padding="same")
+                  padding="same",
+                  weight_decay=weight_decay)
     self.b4_conv2 = BasicConv2D(filters=64,
                   kernel_size=(7, 1),
                   strides=1,
-                  padding="same")
+                  padding="same",
+                  weight_decay=weight_decay)
     self.b4_conv3 = BasicConv2D(filters=64,
                   kernel_size=(1, 7),
                   strides=1,
-                  padding="same")
+                  padding="same",
+                  weight_decay=weight_decay)
     self.b4_conv4 = BasicConv2D(filters=96,
                   kernel_size=(3, 3),
                   strides=1,
-                  padding="valid")
+                  padding="valid",
+                  weight_decay=weight_decay)
     self.b5_conv = BasicConv2D(filters=192,
                    kernel_size=(3, 3),
                    strides=2,
-                   padding="valid")
+                   padding="valid",
+                   weight_decay=weight_decay)
     self.b6_maxpool = tf.keras.layers.MaxPool2D(pool_size=(3, 3),
                           strides=2,
                           padding="valid")
@@ -110,7 +123,7 @@ class Stem(tf.keras.layers.Layer):
 
 
 class InceptionBlockA(tf.keras.layers.Layer):
-  def __init__(self):
+  def __init__(self, weight_decay):
     super(InceptionBlockA, self).__init__()
     self.b1_pool = tf.keras.layers.AveragePooling2D(pool_size=(3, 3),
                             strides=1,
@@ -118,31 +131,38 @@ class InceptionBlockA(tf.keras.layers.Layer):
     self.b1_conv = BasicConv2D(filters=96,
                    kernel_size=(1, 1),
                    strides=1,
-                   padding="same")
+                   padding="same",
+                   weight_decay=weight_decay)
     self.b2_conv = BasicConv2D(filters=96,
                    kernel_size=(1, 1),
                    strides=1,
-                   padding="same")
+                   padding="same",
+                   weight_decay=weight_decay)
     self.b3_conv1 = BasicConv2D(filters=64,
                   kernel_size=(1, 1),
                   strides=1,
-                  padding="same")
+                  padding="same",
+                  weight_decay=weight_decay)
     self.b3_conv2 = BasicConv2D(filters=96,
                   kernel_size=(3, 3),
                   strides=1,
-                  padding="same")
+                  padding="same",
+                  weight_decay=weight_decay)
     self.b4_conv1 = BasicConv2D(filters=64,
                   kernel_size=(1, 1),
                   strides=1,
-                  padding="same")
+                  padding="same",
+                  weight_decay=weight_decay)
     self.b4_conv2 = BasicConv2D(filters=96,
                   kernel_size=(3, 3),
                   strides=1,
-                  padding="same")
+                  padding="same",
+                  weight_decay=weight_decay)
     self.b4_conv3 = BasicConv2D(filters=96,
                   kernel_size=(3, 3),
                   strides=1,
-                  padding="same")
+                  padding="same",
+                  weight_decay=weight_decay)
 
   def call(self, inputs, training=None, **kwargs):
     b1 = self.b1_pool(inputs)
@@ -161,7 +181,7 @@ class InceptionBlockA(tf.keras.layers.Layer):
 
 
 class ReductionA(tf.keras.layers.Layer):
-  def __init__(self, k, l, m, n):
+  def __init__(self, k, l, m, n, weight_decay):
     super(ReductionA, self).__init__()
     self.b1_pool = tf.keras.layers.MaxPool2D(pool_size=(3, 3),
                          strides=2,
@@ -169,19 +189,23 @@ class ReductionA(tf.keras.layers.Layer):
     self.b2_conv = BasicConv2D(filters=n,
                    kernel_size=(3, 3),
                    strides=2,
-                   padding="valid")
+                   padding="valid",
+                   weight_decay=weight_decay)
     self.b3_conv1 = BasicConv2D(filters=k,
                   kernel_size=(1, 1),
                   strides=1,
-                  padding="same")
+                  padding="same",
+                  weight_decay=weight_decay)
     self.b3_conv2 = BasicConv2D(filters=l,
                   kernel_size=(3, 3),
                   strides=1,
-                  padding="same")
+                  padding="same",
+                  weight_decay=weight_decay)
     self.b3_conv3 = BasicConv2D(filters=m,
                   kernel_size=(3, 3),
                   strides=2,
-                  padding="valid")
+                  padding="valid",
+                  weight_decay=weight_decay)
 
   def call(self, inputs, training=None, **kwargs):
     b1 = self.b1_pool(inputs)
@@ -196,7 +220,7 @@ class ReductionA(tf.keras.layers.Layer):
 
 
 class InceptionBlockB(tf.keras.layers.Layer):
-  def __init__(self):
+  def __init__(self, weight_decay):
     super(InceptionBlockB, self).__init__()
     self.b1_pool = tf.keras.layers.AveragePooling2D(pool_size=(3, 3),
                             strides=1,
@@ -204,43 +228,53 @@ class InceptionBlockB(tf.keras.layers.Layer):
     self.b1_conv = BasicConv2D(filters=128,
                    kernel_size=(1, 1),
                    strides=1,
-                   padding="same")
+                   padding="same",
+                   weight_decay=weight_decay)
     self.b2_conv = BasicConv2D(filters=384,
                    kernel_size=(1, 1),
                    strides=1,
-                   padding="same")
+                   padding="same",
+                   weight_decay=weight_decay)
     self.b3_conv1 = BasicConv2D(filters=192,
                   kernel_size=(1, 1),
                   strides=1,
-                  padding="same")
+                  padding="same",
+                  weight_decay=weight_decay)
     self.b3_conv2 = BasicConv2D(filters=224,
                   kernel_size=(1, 7),
                   strides=1,
-                  padding="same")
+                  padding="same",
+                  weight_decay=weight_decay)
     self.b3_conv3 = BasicConv2D(filters=256,
                   kernel_size=(1, 7),
                   strides=1,
-                  padding="same")
+                  padding="same",
+                  weight_decay=weight_decay)
     self.b4_conv1 = BasicConv2D(filters=192,
                   kernel_size=(1, 1),
                   strides=1,
-                  padding="same")
+                  padding="same",
+                  weight_decay=weight_decay)
     self.b4_conv2 = BasicConv2D(filters=192,
                   kernel_size=(1, 7),
                   strides=1,
-                  padding="same")
+                  padding="same",
+                  weight_decay=weight_decay)
     self.b4_conv3 = BasicConv2D(filters=224,
                   kernel_size=(7, 1),
                   strides=1,
-                  padding="same")
+                  padding="same",
+                  weight_decay=weight_decay)
     self.b4_conv4 = BasicConv2D(filters=224,
                   kernel_size=(1, 7),
                   strides=1,
-                  padding="same")
+                  padding="same",
+                  weight_decay=weight_decay)
     self.b4_conv5 = BasicConv2D(filters=256,
                   kernel_size=(7, 1),
                   strides=1,
-                  padding="same")
+                  padding="same",
+                  weight_decay=weight_decay)
 
   def call(self, inputs, training=None, **kwargs):
     b1 = self.b1_pool(inputs)
@@ -262,7 +296,7 @@ class InceptionBlockB(tf.keras.layers.Layer):
 
 
 class ReductionB(tf.keras.layers.Layer):
-  def __init__(self):
+  def __init__(self, weight_decay):
     super(ReductionB, self).__init__()
     self.b1_pool = tf.keras.layers.MaxPool2D(pool_size=(3, 3),
                          strides=2,
@@ -270,27 +304,33 @@ class ReductionB(tf.keras.layers.Layer):
     self.b2_conv1 = BasicConv2D(filters=192,
                   kernel_size=(1, 1),
                   strides=1,
-                  padding="same")
+                  padding="same",
+                  weight_decay=weight_decay)
     self.b2_conv2 = BasicConv2D(filters=192,
                   kernel_size=(3, 3),
                   strides=2,
-                  padding="valid")
+                  padding="valid",
+                  weight_decay=weight_decay)
     self.b3_conv1 = BasicConv2D(filters=256,
                   kernel_size=(1, 1),
                   strides=1,
-                  padding="same")
+                  padding="same",
+                  weight_decay=weight_decay)
     self.b3_conv2 = BasicConv2D(filters=256,
                   kernel_size=(1, 7),
                   strides=1,
-                  padding="same")
+                  padding="same",
+                  weight_decay=weight_decay)
     self.b3_conv3 = BasicConv2D(filters=320,
                   kernel_size=(7, 1),
                   strides=1,
-                  padding="same")
+                  padding="same",
+                  weight_decay=weight_decay)
     self.b3_conv4 = BasicConv2D(filters=320,
                   kernel_size=(3, 3),
                   strides=2,
-                  padding="valid")
+                  padding="valid",
+                  weight_decay=weight_decay)
 
   def call(self, inputs, training=None, **kwargs):
     b1 = self.b1_pool(inputs)
@@ -307,7 +347,7 @@ class ReductionB(tf.keras.layers.Layer):
 
 
 class InceptionBlockC(tf.keras.layers.Layer):
-  def __init__(self):
+  def __init__(self, weight_decay):
     super(InceptionBlockC, self).__init__()
     self.b1_pool = tf.keras.layers.AveragePooling2D(pool_size=(3, 3),
                             strides=1,
@@ -315,43 +355,53 @@ class InceptionBlockC(tf.keras.layers.Layer):
     self.b1_conv = BasicConv2D(filters=256,
                    kernel_size=(1, 1),
                    strides=1,
-                   padding="same")
+                   padding="same",
+                   weight_decay=weight_decay)
     self.b2_conv = BasicConv2D(filters=256,
                    kernel_size=(1, 1),
                    strides=1,
-                   padding="same")
+                   padding="same",
+                   weight_decay=weight_decay)
     self.b3_conv1 = BasicConv2D(filters=384,
                   kernel_size=(1, 1),
                   strides=1,
-                  padding="same")
+                  padding="same",
+                  weight_decay=weight_decay)
     self.b3_conv2 = BasicConv2D(filters=256,
                   kernel_size=(1, 3),
                   strides=1,
-                  padding="same")
+                  padding="same",
+                  weight_decay=weight_decay)
     self.b3_conv3 = BasicConv2D(filters=256,
                   kernel_size=(3, 1),
                   strides=1,
-                  padding="same")
+                  padding="same",
+                  weight_decay=weight_decay)
     self.b4_conv1 = BasicConv2D(filters=384,
                   kernel_size=(1, 1),
                   strides=1,
-                  padding="same")
+                  padding="same",
+                  weight_decay=weight_decay)
     self.b4_conv2 = BasicConv2D(filters=448,
                   kernel_size=(1, 3),
                   strides=1,
-                  padding="same")
+                  padding="same",
+                  weight_decay=weight_decay)
     self.b4_conv3 = BasicConv2D(filters=512,
                   kernel_size=(3, 1),
                   strides=1,
-                  padding="same")
+                  padding="same",
+                  weight_decay=weight_decay)
     self.b4_conv4 = BasicConv2D(filters=256,
                   kernel_size=(3, 1),
                   strides=1,
-                  padding="same")
+                  padding="same",
+                  weight_decay=weight_decay)
     self.b4_conv5 = BasicConv2D(filters=256,
                   kernel_size=(1, 3),
                   strides=1,
-                  padding="same")
+                  padding="same",
+                  weight_decay=weight_decay)
 
   def call(self, inputs, training=None, **kwargs):
     b1 = self.b1_pool(inputs)

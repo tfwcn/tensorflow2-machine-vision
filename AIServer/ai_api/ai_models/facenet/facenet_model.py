@@ -19,6 +19,7 @@ class FaceNetModel(tf.keras.Model):
                dropout_rate:float,
                random_crop:bool, # 随机裁剪
                random_flip:bool, # 随机左右镜像，不建议用
+               weight_decay:float,
                **kwargs):
     super(FaceNetModel, self).__init__(**kwargs)
     self.embedding_size = embedding_size
@@ -28,15 +29,18 @@ class FaceNetModel(tf.keras.Model):
     if backbone == 'InceptionResNetV1':
       self.backbone = InceptionResNetV1(classes=self.embedding_size, 
                                         classifier_activation=None,
-                                        dropout_rate=dropout_rate)
+                                        dropout_rate=dropout_rate,
+                                        weight_decay=weight_decay)
     elif backbone == 'InceptionResNetV2':
       self.backbone = InceptionResNetV2(classes=self.embedding_size, 
                                         classifier_activation=None,
-                                        dropout_rate=dropout_rate)
+                                        dropout_rate=dropout_rate,
+                                        weight_decay=weight_decay)
     elif backbone == 'InceptionV4':
       self.backbone = InceptionV4(classes=self.embedding_size, 
                                   classifier_activation=None,
-                                  dropout_rate=dropout_rate)
+                                  dropout_rate=dropout_rate,
+                                  weight_decay=weight_decay)
     elif backbone == 'KerasInceptionResNetV2':
       self.backbone = tf.keras.applications.InceptionResNetV2(weights=None,
         classes=self.embedding_size,
@@ -232,8 +236,9 @@ class FaceNetTrainModel(FaceNetModel):
         neg_dists_sqr = tf.reshape(neg_dists_sqr, (1, -1))
         # 找到合适的三元组，(同人下标，不同人下标)
         # 按条件判断
-        # all_mask = tf.math.logical_and(neg_dists_sqr-pos_dist_sqr<self.alpha, pos_dist_sqr<neg_dists_sqr)
-        all_mask = neg_dists_sqr-pos_dist_sqr<self.alpha
+        all_mask = tf.math.logical_and(neg_dists_sqr-pos_dist_sqr<self.alpha, pos_dist_sqr<neg_dists_sqr)
+        # all_mask = neg_dists_sqr-pos_dist_sqr<self.alpha
+        all_mask = tf.math.logical_or(all_mask, neg_dists_sqr<pos_dist_sqr)
         # 遍历所有同人
         for i3 in tf.range(tf.shape(all_mask)[0]):
           # 获取符合条件的其他人
@@ -276,7 +281,7 @@ class FaceNetTrainModel(FaceNetModel):
       # tf.print('anchor, positive, negative:', tf.shape(anchor), tf.shape(positive), tf.shape(negative))
       loss = self.triplet_loss(anchor, positive, negative)
       # 平均移动loss
-      if self.moving_average and self.shadow_loss != 0:
+      if self.moving_average and self.global_step > 1:
         loss = self.loss_decay * self.shadow_loss + (1 - self.loss_decay) * loss
 
     # 获取变量集，计算梯度
@@ -292,13 +297,13 @@ class FaceNetTrainModel(FaceNetModel):
     
     # MovingAverage
     if self.moving_average:
-    #   decay = tf.math.minimum(self.moving_average_decay, (1 + self.global_step) / (10 + self.global_step))
-    #   for i,var in enumerate(trainable_vars):
-    #     ema_trainable_variable = decay * self.shadow_trainable_variables[i] + (1 - decay) * var
-    #     # if i == 0:
-    #     #   tf.print('moving_average:', ema_trainable_variable[0,0,0,0], var[0,0,0,0], self.shadow_trainable_variables[i][0,0,0,0])
-    #     var.assign(ema_trainable_variable)
-    #     self.shadow_trainable_variables[i].assign(ema_trainable_variable)
+      # decay = tf.math.minimum(self.moving_average_decay, (1 + self.global_step) / (10 + self.global_step))
+      # for i,var in enumerate(trainable_vars):
+      #   # ema_trainable_variable = decay * self.shadow_trainable_variables[i] + (1 - decay) * var
+      #   # if i == 0:
+      #   #   tf.print('moving_average:', ema_trainable_variable[0,0,0,0], var[0,0,0,0], self.shadow_trainable_variables[i][0,0,0,0])
+      #   var.assign(decay * self.shadow_trainable_variables[i] + (1 - decay) * var)
+      #   self.shadow_trainable_variables[i].assign(var)
       # 记录shadow_loss
       self.shadow_loss.assign(loss)
     # 返回一个dict指标名称映射到当前值
