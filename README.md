@@ -21,3 +21,7 @@
 ## UNet实现
 
 源码位置：[./AIServer/ai_api/ai_models/unet](https://github.com/tfwcn/tensorflow2-machine-vision/tree/master/AIServer/ai_api/ai_models/unet)
+
+## MoCo实现
+
+源码位置：[./AIServer/ai_api/ai_models/momentum_contrast](https://github.com/tfwcn/tensorflow2-machine-vision/tree/master/AIServer/ai_api/ai_models/momentum_contrast)
