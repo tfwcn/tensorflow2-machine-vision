@@ -49,7 +49,7 @@ def LoadLabels(labels_file, images_path, classes_name):
       labels.append({
         'image_path': image_full_path,
         'classes': classes,
-        'boxes': boxes
+        'boxes': np.array(boxes, np.float).reshape([-1,4])
         })
   labels_num = len(labels)
   print('已加载%d个标签' % (labels_num))

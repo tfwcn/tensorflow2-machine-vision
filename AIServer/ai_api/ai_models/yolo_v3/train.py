@@ -86,13 +86,13 @@ def train():
       )
     model.save_weights(os.path.join(model_path,'start_weights.ckpt'))
 
-  print('Train on {} samples, val on {} samples, with batch size {}.'.format(data_generator_train.labels_num, data_generator_val.labels_num, batch_size))
+  print('Train on {} samples, val on {} samples, with batch size {}.'.format(data_generator_train.labels_num, data_generator_val.labels_num, batchSize))
   print('开始训练')
   
   steps_per_epoch=5000
   model.FreeLayer([''])
   model.fit(data_set_train,
-    # steps_per_epoch=max(1, data_generator_train.labels_num//batch_size),
+    # steps_per_epoch=max(1, data_generator_train.labels_num//batchSize),
     steps_per_epoch=steps_per_epoch,
     validation_data=data_set_val,
     validation_steps=max(1, data_generator_val.labels_num),

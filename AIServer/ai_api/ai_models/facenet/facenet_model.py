@@ -17,15 +17,11 @@ class FaceNetModel(tf.keras.Model):
                image_size:int, # 输入图片大小，默认160。输入图比160大，则裁剪
                backbone:str, # 主体结构：InceptionResNetV1、InceptionResNetV2、InceptionV4、KerasInceptionResNetV2
                dropout_rate:float,
-               random_crop:bool, # 随机裁剪
-               random_flip:bool, # 随机左右镜像，不建议用
                weight_decay:float,
                **kwargs):
     super(FaceNetModel, self).__init__(**kwargs)
     self.embedding_size = embedding_size
     self.image_size = image_size
-    self.random_crop = random_crop
-    self.random_flip = random_flip
     if backbone == 'InceptionResNetV1':
       self.backbone = InceptionResNetV1(classes=self.embedding_size, 
                                         classifier_activation=None,
@@ -55,6 +51,62 @@ class FaceNetModel(tf.keras.Model):
     x = self.backbone(x, training)
     x = tf.math.l2_normalize(x, axis=1, epsilon=1e-10, name='embeddings')
     return x
+
+class FaceNetTrainModel(tf.keras.Model):
+  def __init__(self,
+               embedding_size:int,
+               image_size:int, # 输入图片大小，默认160。输入图比160大，则裁剪
+               alpha:float, # 正负距离差，默认0.2
+               batch_size:int, # 批次大小
+               people_per_batch:int, # 选多少人
+               images_per_person:int, # 每人最多选多少张图
+               random_crop:bool, # 随机裁剪
+               random_flip:bool, # 随机左右镜像，不建议用
+               loss_decay:float=0.9, # loss平均移动率，ExponentialMovingAverage
+               moving_average:bool=True, # 是否使用MovingAverage
+               moving_average_decay:float=0.9999, # 变量平均移动率，ExponentialMovingAverage
+               strategy = None,
+               **kwargs):
+    super(FaceNetTrainModel, self).__init__()
+    self.embedding_size = embedding_size
+    self.image_size = image_size
+    self.alpha = alpha
+    self.batch_size = batch_size
+    self.people_per_batch = people_per_batch
+    self.images_per_person = images_per_person
+    self.random_crop = random_crop
+    self.random_flip = random_flip
+    self.loss_decay = loss_decay
+    self.moving_average = moving_average
+    self.moving_average_decay = moving_average_decay
+    self.strategy = strategy
+
+    self.model = FaceNetModel(embedding_size=embedding_size, image_size=image_size, **kwargs)
+    if self.moving_average:
+      self.shadow_model = FaceNetModel(
+        embedding_size=embedding_size,
+        image_size=image_size,
+        trainable=False,
+        **kwargs)
+
+  def build(self, input_shape):
+    # super(FaceNetTrainModel, self).build(input_shape)
+    self.model.build(input_shape)
+    if self.moving_average:
+      self.shadow_model.build(input_shape)
+      tf.print('shadow variables:', len(self.shadow_model.variables))
+      for i in range(len(self.shadow_model.variables)):
+        var_q = self.model.variables[i]
+        var_k = self.shadow_model.variables[i]
+        var_q.assign(var_k)
+      self.shadow_loss = self.add_weight(name='shadow_loss',
+                                        shape=(), 
+                                        dtype=tf.float32, 
+                                        trainable=False,
+                                        initializer=tf.keras.initializers.Zeros())
+
+  def call(self, inputs, training, mask=None):
+      return self.model(inputs, training=training)
 
   @tf.function
   def euclidean_distance(self, embedding1, embedding2, axis=None):
@@ -115,58 +167,12 @@ class FaceNetModel(tf.keras.Model):
       batch_size_now = tf.shape(images_batch)[0]
       paddings = [[0,self.batch_size-batch_size_now], [0,0], [0,0], [0,0]]
       images_batch = tf.pad(images_batch, paddings, "CONSTANT")
-      embeddings_batch = self(images_batch, training=False)
+      embeddings_batch = self.model(images_batch, training=False)
       # 对齐batch_size，加快训练速度
       embeddings_batch = embeddings_batch[0:batch_size_now]
       # tf.print('embeddings_batch:', tf.shape(embeddings_batch), type(embeddings_batch))
       embeddings = tf.concat([embeddings, embeddings_batch], axis=0)
     return embeddings
-
-class FaceNetTrainModel(FaceNetModel):
-  def __init__(self,
-               alpha:float, # 正负距离差，默认0.2
-               batch_size:int, # 批次大小
-               people_per_batch:int, # 选多少人
-               images_per_person:int, # 每人最多选多少张图
-               loss_decay:float=0.9, # loss平均移动率，ExponentialMovingAverage
-               moving_average:bool=True, # 是否使用MovingAverage
-               moving_average_decay:float=0.9999, # 变量平均移动率，ExponentialMovingAverage
-               strategy = None,
-               **kwargs):
-    super(FaceNetTrainModel, self).__init__(**kwargs)
-    self.alpha = alpha
-    self.batch_size = batch_size
-    self.people_per_batch = people_per_batch
-    self.images_per_person = images_per_person
-    self.loss_decay = loss_decay
-    self.moving_average = moving_average
-    self.moving_average_decay = moving_average_decay
-    self.strategy = strategy
-
-  def build(self, input_shape):
-    super(FaceNetTrainModel, self).build(input_shape)
-    if self.moving_average:
-      self.global_step = self.add_weight(name='global_step',
-                                        shape=(), 
-                                        dtype=tf.float32, 
-                                        trainable=False,
-                                        initializer=tf.keras.initializers.Zeros())
-      self.shadow_loss = self.add_weight(name='shadow_loss',
-                                        shape=(), 
-                                        dtype=tf.float32, 
-                                        trainable=False,
-                                        initializer=tf.keras.initializers.Zeros())
-      ema = tf.train.ExponentialMovingAverage(self.moving_average_decay, num_updates=self.global_step)
-      self.add_update(ema.apply(self.trainable_variables))
-      # self.shadow_trainable_variables = []
-      # tf.print('shadow trainable_variables:', len(self.trainable_variables))
-      # for var in self.trainable_variables:
-      #   new_weight = self.add_weight(name='shadow_' + var.name,
-      #                               shape=var.shape, 
-      #                               dtype=var.dtype, 
-      #                               trainable=False)
-      #   new_weight.assign(var)
-      #   self.shadow_trainable_variables.append(new_weight)
 
   @tf.function(input_signature=[
     tf.TensorSpec(shape=(None,None), dtype=tf.float32),
@@ -270,10 +276,9 @@ class FaceNetTrainModel(FaceNetModel):
     batch_size_now = tf.shape(data)[0]
     paddings = [[0,self.batch_size-batch_size_now], [0,0], [0,0], [0,0]]
     data = tf.pad(data, paddings, "CONSTANT")
-    # 记录总训练步数
-    self.global_step.assign_add(1)
+    global_step = tf.cast(self.optimizer.iterations, tf.float32)
     with tf.GradientTape() as tape:
-      embeddings = self(data, training=True)
+      embeddings = self.model(data, training=True)
       # 对齐batch_size，加快训练速度
       embeddings = embeddings[0:batch_size_now]
       # tf.print('embeddings:', tf.shape(embeddings))
@@ -281,11 +286,11 @@ class FaceNetTrainModel(FaceNetModel):
       # tf.print('anchor, positive, negative:', tf.shape(anchor), tf.shape(positive), tf.shape(negative))
       loss = self.triplet_loss(anchor, positive, negative)
       # 平均移动loss
-      if self.moving_average and self.global_step > 1:
+      if self.moving_average and global_step > 1:
         loss = self.loss_decay * self.shadow_loss + (1 - self.loss_decay) * loss
 
     # 获取变量集，计算梯度
-    trainable_vars = self.trainable_variables
+    trainable_vars = self.model.trainable_variables
     # tf.print('trainable_variables:', len(trainable_vars))
     gradients = tape.gradient(loss, trainable_vars)
     # 分布式训练时，梯度求平均
@@ -297,13 +302,12 @@ class FaceNetTrainModel(FaceNetModel):
     
     # MovingAverage
     if self.moving_average:
-      # decay = tf.math.minimum(self.moving_average_decay, (1 + self.global_step) / (10 + self.global_step))
-      # for i,var in enumerate(trainable_vars):
-      #   # ema_trainable_variable = decay * self.shadow_trainable_variables[i] + (1 - decay) * var
-      #   # if i == 0:
-      #   #   tf.print('moving_average:', ema_trainable_variable[0,0,0,0], var[0,0,0,0], self.shadow_trainable_variables[i][0,0,0,0])
-      #   var.assign(decay * self.shadow_trainable_variables[i] + (1 - decay) * var)
-      #   self.shadow_trainable_variables[i].assign(var)
+      decay = tf.math.minimum(self.moving_average_decay, (1 + global_step) / (10000 + global_step))
+      for i in range(len(self.shadow_model.variables)):
+        var_q = self.model.variables[i]
+        var_k = self.shadow_model.variables[i]
+        var_q.assign(decay * var_k + (1 - decay) * var_q)
+        var_k.assign(var_q)
       # 记录shadow_loss
       self.shadow_loss.assign(loss)
     # 返回一个dict指标名称映射到当前值

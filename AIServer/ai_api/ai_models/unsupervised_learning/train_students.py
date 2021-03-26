@@ -4,7 +4,8 @@ import tensorflow as tf
 import sys
 import os
 sys.path.append(os.getcwd())
-from ai_api.ai_models.yolo_v4.model import YoloV4Model
+from ai_api.ai_models.unsupervised_learning.model import YoloV3Model
+from ai_api.ai_models.unsupervised_learning.teacher_dataset import DataGenerator as TeacherDataGenerator
 from ai_api.ai_models.datasets.coco_dataset import DataGenerator
 from ai_api.ai_models.utils.radam import RAdam
 from ai_api.ai_models.utils.load_object_detection_data import LoadAnchors
@@ -14,7 +15,6 @@ import argparse
 # 启动参数
 parser = argparse.ArgumentParser()
 parser.add_argument('--trainData', default='./train2017')
-parser.add_argument('--trainLabels', default='./data/coco_train2017_labels.txt')
 parser.add_argument('--valData', default='./val2017')
 parser.add_argument('--valLabels', default='./data/coco_val2017_labels.txt')
 parser.add_argument('--classesFile', default='./data/coco_classes.txt')
@@ -23,7 +23,6 @@ parser.add_argument('--batchSize', default=4, type=int)
 args = parser.parse_args()
 
 trainData = args.trainData
-trainLabels = args.trainLabels
 valData = args.valData
 valLabels = args.valLabels
 classesFile = args.classesFile
@@ -33,19 +32,29 @@ batchSize = args.batchSize
 
 def train():
   '''训练'''
+  # 设置GPU显存自适应
+  gpus = tf.config.experimental.list_physical_devices(device_type='GPU')
+  cpus = tf.config.experimental.list_physical_devices(device_type='CPU')
+  print(gpus, cpus)
+  for gpu in gpus:
+      tf.config.experimental.set_memory_growth(gpu, True)
+  # if len(gpus) > 1:
+  #     tf.config.experimental.set_visible_devices(gpus[1], 'GPU')
+  # elif len(cpus) > 0:
+  #     tf.config.experimental.set_visible_devices(cpus[0], 'CPU')
   # 加载数据
   anchors = LoadAnchors(anchorsFile)
-  data_generator_train = DataGenerator(image_path=trainData,
-    label_path=trainLabels,
-    classes_path=classesFile, batch_size=batchSize, anchors=anchors, image_wh=(416, 416), label_mean=True, image_random=True, flip=True)
+  data_generator_train = TeacherDataGenerator(image_path=trainData,
+    classes_path=classesFile, batch_size=batchSize, anchors=anchors,
+    image_wh=(416, 416), image_random=True, flip=True)
   data_set_train = data_generator_train.GetDataSet()
-  data_generator_val = DataGenerator(image_path=valData,
-    label_path=valLabels,
-    classes_path=classesFile, batch_size=1, anchors=anchors, image_wh=(416, 416), label_mean=False, image_random=False, flip=False)
+  data_generator_val = DataGenerator(image_path=valData, label_path=valLabels,
+    classes_path=classesFile, batch_size=1, anchors=anchors,
+    image_wh=(416, 416), label_mean=False, image_random=False, flip=False)
   data_set_val = data_generator_val.GetDataSet()
 
   # 构建模型
-  model = YoloV4Model(classes_num=data_generator_train.classes_num, anchors=anchors, image_wh=(416, 416))
+  model = YoloV3Model(classes_num=data_generator_train.classes_num, anchors=anchors, image_wh=(416, 416), backbone_weights=None)
 
   # 编译模型
   print('编译模型')
@@ -53,7 +62,7 @@ def train():
   # model.compile(optimizer=RAdam(lr=1e-4))
 
   # 日志
-  log_dir = './data/yolo_v4_weights/'
+  log_dir = './data/unsupervised_learning_weights/'
   model_path = log_dir + 'train_weights/'
   old_model_path = log_dir + 'tf2_weights/'
   _ = model(tf.ones((1, 416, 416, 3)))
@@ -78,7 +87,7 @@ def train():
 
   if is_old_model:
     print('旧权重，开始预训练')
-    model.FreeLayer(['darknet_conv2d_93','darknet_conv2d_101', 'darknet_conv2d_109'])
+    model.FreeLayer(['darknet_conv2d_6','darknet_conv2d_14', 'darknet_conv2d_22'])
     model.fit(data_set_train,
       steps_per_epoch=1000,
       epochs=1,
@@ -86,7 +95,7 @@ def train():
       )
     model.save_weights(os.path.join(model_path,'start_weights.ckpt'))
 
-  print('Train on {} samples, val on {} samples, with batch size {}.'.format(data_generator_train.labels_num, data_generator_val.labels_num, batchSize))
+  print('Train on {} samples, val on {} samples, with batch size {}.'.format(data_generator_train.image_num, data_generator_val.labels_num, batchSize))
   print('开始训练')
   
   steps_per_epoch=5000

@@ -19,5 +19,5 @@ python ./ai_api/ai_models/yolo_v3/train.py --trainData "./coco2017/train2017" --
 ## 测试
 
 ```
-python ./ai_api/ai_models/yolo_v3/test.py --imageFile "./data/img.png" --anchorsFile "./data/coco_anchors.txt" --classesFile "./data/coco_classes.txt" --model_path "./data/yolo_v3_weights/tf2_weights/"
+python ./ai_api/ai_models/yolo_v3/test.py --imageFile "./data/img.png" --anchorsFile "./data/coco_anchors.txt" --classesFile "./data/coco_classes.txt" --modelPath "./data/yolo_v3_weights/tf2_weights/"
 ```

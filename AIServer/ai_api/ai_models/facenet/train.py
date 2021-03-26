@@ -22,7 +22,7 @@ parser.add_argument('--images_per_person', type=int,
 parser.add_argument('--max_nrof_epochs', type=int,
   help='Number of epochs to run.', default=500)
 parser.add_argument('--epoch_size', type=int,
-  help='Number of batches per epoch.', default=1000)
+  help='Number of batches per epoch.', default=3000)
 parser.add_argument('--alpha', type=float,
   help='Positive to negative triplet distance margin.', default=0.2)
 parser.add_argument('--embedding_size', type=int,

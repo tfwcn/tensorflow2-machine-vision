@@ -325,7 +325,7 @@ class YoloV4Model(YoloV4ModelBase):
       # 平均移动loss
       if self.optimizer.iterations > 1:
         global_step = tf.cast(self.optimizer.iterations, tf.float32)
-        decay = tf.math.minimum(self.loss_decay, (1 + global_step) / (10 + global_step))
+        decay = tf.math.minimum(self.loss_decay, (1 + global_step) / (1000 + global_step))
         # tf.print('\ndecay:', decay)
         loss = decay * self.shadow_loss + (1 - decay) * loss
     # tf.print('\nloss:', loss)

@@ -3,6 +3,7 @@ import tensorflow as tf
 import random
 from PIL import Image, ImageFilter
 from matplotlib.colors import rgb_to_hsv, hsv_to_rgb
+import cv2
 
 import sys
 import os
@@ -10,23 +11,25 @@ sys.path.append(os.getcwd())
 from ai_api.ai_models.utils.load_object_detection_data import LoadClasses, LoadLabels, LoadAnchors
 from ai_api.ai_models.utils.tf_image_utils import LoadImage, PadOrCropToBoundingBox, ResizeWithPad
 from ai_api.ai_models.utils.tf_iou_utils import GetIOU
+from ai_api.ai_models.utils.file_helper import ReadFileList
 import ai_api.ai_models.utils.image_helper as ImageHelper
+from ai_api.ai_models.unsupervised_learning.model import YoloV3Model
 
 
 class DataGenerator():
   def __init__(self,
     image_path,
-    label_path,
     classes_path,
     batch_size,
     anchors,
     image_wh=(416, 416),
-    label_mean=True,
+    model_path='./data/unsupervised_learning_weights/teacher_weights/',
     image_random=True,
     jitter=.3,
     hue=.1,
     sat=1.5,
     val=1.5,
+    scale=(.25, 2),
     flip=True):
     '''
     数据生成
@@ -37,18 +40,18 @@ class DataGenerator():
       image_random: 数据数据增强
     '''
     self.image_path = image_path
-    self.label_path = label_path
     self.classes_path = classes_path
     self.batch_size = batch_size
     self.image_wh = image_wh
     self.anchors_wh = anchors
-    self.label_mean = label_mean
+    self.model_path = model_path
     self.image_random = image_random
     # 随机参数
     self.jitter = jitter
     self.hue = hue
     self.sat = sat
     self.val = val
+    self.scale = scale
     self.flip = flip
 
     self.layers_hw = [[self.image_wh[1] // i, self.image_wh[0] // i] for i in [32, 16, 8]]
@@ -56,28 +59,130 @@ class DataGenerator():
 
     # 加载类型
     self.classes, self.classes_num = LoadClasses(self.classes_path)
-    # 加载标签
-    self.labels, self.labels_num = LoadLabels(self.label_path, self.image_path, self.classes)
-    
-    # 记录存在分类
-    self.class_list = set()
-    # 图片对于分类列表
-    self.image_class_list = {}
-    # 读取素材标签，用于素材均衡
-    if self.label_mean:
-      for label in self.labels:
-        image_path = label['image_path']
-        self.image_class_list[image_path]=set()
-        for c in label['classes']:
-          self.class_list.add(c)
-          self.image_class_list[image_path].add(c)
-        self.image_class_list[image_path]=list(self.image_class_list[image_path])
-      self.class_list = list(self.class_list)
-      print('存在标签：', self.class_list)
+    # 读取图片路径
+    self.image_list = ReadFileList(self.image_path, pattern=r'.*\.jpg', select_sub_path=True, is_full_path=True)
+    self.image_num = len(self.image_list)
+    # 初始化模型
+    self.InitModel()
+
+  def InitModel(self):
+    # 构建模型
+    self.model = YoloV3Model(classes_num=self.classes_num, anchors=self.anchors_wh, image_wh=self.image_wh)
+
+    # 编译模型
+    print('编译模型')
+    self.model.compile(optimizer=tf.keras.optimizers.Adam(lr=1e-4))
+
+    # 加载模型
+    _ = self.model(tf.ones((1, self.image_wh[1], self.image_wh[0], 3)), training=False)
+    if os.path.exists(self.model_path):
+      last_model_path = tf.train.latest_checkpoint(self.model_path)
+      self.model.load_weights(last_model_path).expect_partial()
+      print('加载模型:{}'.format(last_model_path))
+    # self.model.summary()
   
   @tf.function
   def Rand(self, a=0, b=1):
+    '''生成[a,b)随机数'''
     return tf.random.uniform([], minval=a, maxval=b)
+    # return tf.random.uniform([])*(b-a) + a
+
+  @tf.function
+  def GetRandomImage(self, image_path):
+    '''随机数据扩展
+    jitter=.3, hue=.1, sat=1.5, val=1.5, proc_img=True, flip=False
+    '''
+    img = LoadImage(image_path)
+    w, h = self.image_wh
+    img_hw = tf.shape(img)[0:2]
+    ih = img_hw[0]
+    iw = img_hw[1]
+
+    jitter=self.jitter
+    hue=self.hue
+    sat=1.0
+    val=self.val
+    flip=self.flip
+    # resize image
+    # 随机缩放
+    new_ar = w/h * self.Rand(1-jitter,1+jitter)/self.Rand(1-jitter,1+jitter)
+    scale = self.Rand(*self.scale)
+    if new_ar < 1:
+        nh = tf.math.floor(scale*h)
+        nw = tf.math.floor(nh*new_ar)
+    else:
+        nw = tf.math.floor(scale*w)
+        nh = tf.math.floor(nw/new_ar)
+    img = tf.image.resize(
+      img,
+      (nh, nw),
+      method=tf.image.ResizeMethod.BILINEAR,
+      antialias=False
+    )
+
+    # place image
+    # 偏移图片
+    dx = tf.cast(tf.math.floor(self.Rand(0, w-nw)), tf.int32)
+    dy = tf.cast(tf.math.floor(self.Rand(0, h-nh)), tf.int32)
+    img = PadOrCropToBoundingBox(img, dy, dx, h, w)
+
+    # flip image or not
+    # 随机翻转图片
+    if flip:
+      flip = self.Rand()<.5
+      if flip:
+        img = tf.image.flip_left_right(img)
+
+    # distort image
+    # 颜色偏移
+    ch = self.Rand(-hue, hue)
+    cs = 1.0
+    if sat!=1:
+      cs = self.Rand(1, sat) if self.Rand()<.5 else 1/self.Rand(1, sat)
+    cv = self.Rand(1, val) if self.Rand()<.5 else 1/self.Rand(1, val)
+    x = tf.image.rgb_to_hsv(img/255.)
+    x_h = x[..., 0:1] + ch
+    x_h = tf.where(x_h>1.0, x_h-1, x_h)
+    x_h = tf.where(x_h<0.0, x_h+1, x_h)
+    x_s = x[..., 1:2] * cs
+    x_v = x[..., 2:3] * cv
+    x = tf.concat([x_h, x_s, x_v], axis=-1)
+    x = tf.clip_by_value(x, clip_value_min=0.0, clip_value_max=1.0)
+    img = tf.image.hsv_to_rgb(x) # numpy array, 0 to 1
+    
+    # 增加一个维度
+    predict_img = tf.expand_dims(img, 0)
+    boxes, classes, _, _, _ = self.model.Predict(predict_img, confidence_thresh=self.Rand(0.3,0.5), scores_thresh=0.2, iou_thresh=0.5)
+
+    
+    # 调整box位置
+    boxes = tf.reshape(boxes, (-1, 2, 2))
+    # 缩放、偏移
+    # boxes = boxes*(nw/tf.cast(iw, tf.float32),nh/tf.cast(ih, tf.float32)) + (dx,dy)
+    dx_f = tf.cast(dx, tf.float32)
+    dy_f = tf.cast(dy, tf.float32)
+    w_f = tf.cast(w, tf.float32)
+    h_f = tf.cast(h, tf.float32)
+    boxes = (boxes * (w_f,h_f) - (dx_f,dy_f))*(tf.cast(iw, tf.float32)/nw,tf.cast(ih, tf.float32)/nh)
+    # 裁剪
+    boxes = tf.clip_by_value(boxes,
+      clip_value_min=0.0,
+      clip_value_max=(iw, ih))
+    boxes = tf.reshape(boxes, (-1, 4))
+    # 翻转
+    if flip:
+      boxes = tf.concat([tf.cast(iw, tf.float32) - boxes[..., 2:3], boxes[..., 1:2],
+                         tf.cast(iw, tf.float32) - boxes[..., 0:1], boxes[..., 3:4]], axis=-1)
+    # 过滤不及格box
+    # tf.print('image_path:', image_path)
+    # tf.print('boxes_num:', tf.shape(boxes)[0])
+    # tf.print('boxes:', boxes)
+    boxes_wh = boxes[..., 2:4] - boxes[..., 0:2]
+    boxes_mask = tf.math.logical_and(boxes_wh[..., 0]>1, boxes_wh[..., 1]>1)
+    boxes = tf.boolean_mask(boxes, boxes_mask)
+    classes = tf.boolean_mask(classes, boxes_mask)
+    # tf.print('boxes_num2:', tf.shape(boxes)[0])
+    return image_path, classes, boxes
 
   @tf.function
   def GetRandomData(self, image_path, classes, boxes):
@@ -147,7 +252,9 @@ class DataGenerator():
     # distort image
     # 颜色偏移
     ch = self.Rand(-hue, hue)
-    cs = self.Rand(1, sat) if self.Rand()<.5 else 1/self.Rand(1, sat)
+    cs = 1.0
+    if sat!=1:
+      cs = self.Rand(1, sat) if self.Rand()<.5 else 1/self.Rand(1, sat)
     cv = self.Rand(1, val) if self.Rand()<.5 else 1/self.Rand(1, val)
     x = tf.image.rgb_to_hsv(img/255.)
     x_h = x[..., 0:1] + ch
@@ -175,6 +282,7 @@ class DataGenerator():
     # 过滤不及格box
     # tf.print('image_path:', image_path)
     # tf.print('boxes_num:', tf.shape(boxes)[0])
+    # tf.print('boxes:', boxes)
     boxes_wh = boxes[..., 2:4] - boxes[..., 0:2]
     boxes_mask = tf.math.logical_and(boxes_wh[..., 0]>1, boxes_wh[..., 1]>1)
     boxes = tf.boolean_mask(boxes, boxes_mask)
@@ -283,43 +391,26 @@ class DataGenerator():
     target3_mask = tf.math.less_equal(target3[...,4:5], 1)
     target3 = target3 * tf.cast(target3_mask, dtype=tf.float32)
     return img, (target1, target2, target3)
-    
+  
   def Generate(self):
-    n = len(self.labels)
+    n = len(self.image_list)
     i = 0
-    class_index = 0
-    clone_labels = self.labels.copy()
+    clone_image_list = self.image_list.copy()
     while True:
       if i==0:
-        random.shuffle(clone_labels)
-      # 数据平均
-      label = clone_labels[i]
-      if len(self.class_list)>0 and self.label_mean:
-        if self.class_list[class_index] not in self.image_class_list[label['image_path']]:
-          i = (i+1) % n
-          continue
-        
-        # 找下一个类型
-        if class_index < len(self.class_list)-1:
-          class_index += 1
-        else:
-          class_index = 0
+        random.shuffle(clone_image_list)
+      image_path = clone_image_list[i]
       # print('image_path:', label['image_path'])
-      image_path = label['image_path']
-      classes = label['classes']
-      boxes = label['boxes']
       i = (i+1) % n
-      # tf.print('boxes:', tf.shape(boxes))
-      yield image_path, classes, boxes
+      yield image_path
 
   def GetDataSet(self):
     '''获取数据集'''
     # 数据预处理
     dataset = tf.data.Dataset.from_generator(self.Generate,
-      (tf.string, tf.int32, tf.float32),
-      (tf.TensorShape([]),
-       tf.TensorShape([None,]),
-       tf.TensorShape([None,4])))
+      (tf.string),
+      (tf.TensorShape([])))
+    dataset = dataset.map(self.GetRandomImage)
     dataset = dataset.map(self.GetRandomData)
     # for image, classes, boxes in dataset.take(1):
     #   tf.print(tf.shape(image), tf.shape(classes), tf.shape(boxes))
