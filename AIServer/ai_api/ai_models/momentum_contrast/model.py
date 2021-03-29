@@ -163,7 +163,8 @@ class MoCoModel(tf.keras.Model):
       ], axis=-1)
     y_k = tf.nn.l2_normalize(y_k, axis=1)
     # tf.print('y_k:', tf.math.reduce_max(y_k), tf.math.reduce_min(y_k))
-    l_pos = tf.tensordot(tf.reshape(y_q, [N,1,-1]), tf.reshape(y_k, [N,-1,1]), axes=[[1,2],[2,1]])
+    l_pos = tf.matmul(tf.reshape(y_q, [N,1,-1]), tf.reshape(y_k, [N,-1,1]))
+    l_pos = tf.reshape(l_pos, [N,-1])
     # negative logits: NxK
     l_neg = tf.matmul(tf.reshape(y_q, [N,-1]), queue)
     # logits: Nx(1+K)
@@ -173,7 +174,6 @@ class MoCoModel(tf.keras.Model):
     labels = tf.zeros(N,dtype=tf.int32)
     # positives are the 0-th
     loss = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=labels, logits=logits/self.T)
-    # loss = tf.reduce_sum(tf.math.abs(loss))
     loss = tf.reduce_mean(loss)
     return loss
 
@@ -237,7 +237,7 @@ class MoCoModel(tf.keras.Model):
     '''评估'''
     x_q, x_k = data
     y_k = self.model_k(x_k, training=False)
-    y_q = self.model_q(x_q, training=True)  # Forward pass
+    y_q = self.model_q(x_q, training=False)  # Forward pass
     queue_size = self.queue.size()
     queue = self.queue.dequeue_many(queue_size)
     self.queue.enqueue_many(queue)
