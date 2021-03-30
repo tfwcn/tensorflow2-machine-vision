@@ -170,8 +170,8 @@ class YoloV3Model(YoloV3ModelBase):
     '''评估'''
     x, y = data
     # 维度丢失，需重置维度
-    x = tf.reshape(x, (-1,416,416,3))
-    y = (tf.reshape(y[0], (-1,13,13,3,(5+self.classes_num))),tf.reshape(y[1], (-1,26,26,3,(5+self.classes_num))),tf.reshape(y[2], (-1,52,52,3,(5+self.classes_num))))
+    # x = tf.reshape(x, (-1,416,416,3))
+    # y = (tf.reshape(y[0], (-1,13,13,3,(5+self.classes_num))),tf.reshape(y[1], (-1,26,26,3,(5+self.classes_num))),tf.reshape(y[2], (-1,52,52,3,(5+self.classes_num))))
     y_pred = self(x, training=False)
     loss = self.loss_obj(y, y_pred)
 
